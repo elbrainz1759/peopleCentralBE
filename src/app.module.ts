@@ -6,8 +6,13 @@ import { DatabaseModule } from './database/database.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwtAuth.guard';
 import { RolesGuard } from './auth/roles.guard';
+import { UsersModule } from './users/users.module';
+import { EmployeesModule } from './employees/employees.module';
+import { LeaveModule } from './leave/leave.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { ExitModule } from './exit/exit.module';
 @Module({
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, AuthModule, UsersModule, EmployeesModule, LeaveModule, DashboardModule, ExitModule],
   controllers: [AppController],
   providers: [
     AppService,
