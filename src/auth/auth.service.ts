@@ -32,6 +32,7 @@ interface Payload {
   id: string;
   email: string;
   role: string;
+  staff_id?: number | null;
 }
 
 interface RequestMetadata {
@@ -44,23 +45,40 @@ export class AuthService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   async register(email: string, password: string, role: string = 'User') {
-    const [rows] = await this.pool.query<UserRow[]>(
-      'SELECT id FROM users WHERE email = ?',
-      [email],
-    );
-
-    if (rows.length > 0) {
-      throw new BadRequestException('Email already exists');
+    //ensure data is not empty and valid
+    if (!email || !password || !role) {
+      throw new BadRequestException('Email and password are required');
     }
+    try {
+      //Check if employee exists in employees table
+      const [empRows] = await this.pool.query<UserRow[]>(
+        'SELECT id FROM employees WHERE email = ?',
+        [email],
+      );
+      if (empRows.length === 0) {
+        throw new BadRequestException('No employee found with this email');
+      }
+      const [rows] = await this.pool.query<UserRow[]>(
+        'SELECT id FROM users WHERE email = ?',
+        [email],
+      );
 
-    const hashed = await bcrypt.hash(password, 10);
+      if (rows.length > 0) {
+        throw new BadRequestException('Email already exists');
+      }
 
-    await this.pool.query<mysql.ResultSetHeader>(
-      'INSERT INTO users (email, password, role) VALUES (?, ?, ?)',
-      [email, hashed, role],
-    );
+      const hashed = await bcrypt.hash(password, 10);
 
-    return { message: 'User registered successfully' };
+      await this.pool.query<mysql.ResultSetHeader>(
+        'INSERT INTO users (email, password, role) VALUES (?, ?, ?)',
+        [email, hashed, role],
+      );
+
+      return { message: 'User registered successfully' };
+    } catch (err) {
+      console.error('Registration error:', err);
+      throw new BadRequestException('Registration failed');
+    }
   }
 
   async login(email: string, password: string, metadata: RequestMetadata) {
