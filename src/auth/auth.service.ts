@@ -8,6 +8,9 @@ import * as bcrypt from 'bcrypt';
 import * as jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 import * as mysql from 'mysql2/promise';
+import { createHash } from 'crypto';
+
+// helper function
 
 interface UserRow extends mysql.RowDataPacket {
   id: number;
@@ -26,7 +29,7 @@ interface SessionRow extends mysql.RowDataPacket {
   user_agent: string | null;
   ip_address: string | null;
   expires_at: Date;
-  is_revoked: number; // 0 or 1
+  is_revoked: string; // Yes or No
 }
 
 interface Payload {
@@ -45,6 +48,10 @@ interface RequestMetadata {
 @Injectable()
 export class AuthService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
+
+  private hashToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
 
   async register(email: string, password: string, role: string = 'User') {
     //ensure data is not empty and valid
@@ -124,7 +131,13 @@ export class AuthService {
         expiresIn: '7d',
       });
 
-      const refreshHash = await bcrypt.hash(refreshToken, 10);
+      const refreshHash = await bcrypt.hash(this.hashToken(refreshToken), 10);
+
+      // ✅ Delete existing session for this device before inserting new one
+      await this.pool.query(
+        'DELETE FROM user_sessions WHERE user_id = ? AND user_agent = ?',
+        [user.unique_id, metadata.userAgent || null],
+      );
 
       await this.pool.query(
         `INSERT INTO user_sessions 
@@ -163,39 +176,49 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    console.log(payload);
-
     const [sessions] = await this.pool.query<SessionRow[]>(
-      'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = 0',
+      'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = "No"',
       [payload.unique_id],
     );
+
+    console.log('Sessions found:', sessions.length); // 👈
+    console.log(
+      'Session IDs:',
+      sessions.map((s) => s.id),
+    ); // 👈
 
     let matchedSession: SessionRow | null = null;
 
     for (const session of sessions) {
+      console.log('Comparing token:', refreshToken.slice(-20)); // last 20 chars
+      console.log('Against hash:', session.refresh_token_hash);
       const isMatch = await bcrypt.compare(
-        refreshToken,
+        this.hashToken(refreshToken),
         session.refresh_token_hash,
       );
+
+      console.log(`Session ${session.id} isMatch:`, isMatch); // 👈
       if (isMatch) {
         matchedSession = session;
         break;
       }
     }
 
-    console.log(matchedSession);
+    console.log('matchedSession:', matchedSession?.id ?? 'NULL'); // 👈
 
     if (!matchedSession) {
-      // Potential reuse attack → revoke all sessions
-      await this.pool.query(
-        'UPDATE user_sessions SET is_revoked = 1 WHERE user_id = ?',
-        [payload.unique_id],
-      );
-
+      // Potential reuse attack → delete all sessions
+      await this.pool.query('DELETE FROM user_sessions WHERE user_id = ?', [
+        payload.unique_id,
+      ]);
       throw new UnauthorizedException('Refresh token reuse detected');
     }
 
-    // Rotate refresh token
+    //  DELETE old session immediately before creating new one
+    await this.pool.query('DELETE FROM user_sessions WHERE id = ?', [
+      matchedSession.id,
+    ]);
+
     const newRefreshToken = jwt.sign(
       {
         id: payload.id,
@@ -207,11 +230,39 @@ export class AuthService {
       { expiresIn: '7d' },
     );
 
-    const newHash = await bcrypt.hash(newRefreshToken, 10);
+    console.log('OLD refreshToken:', refreshToken); // 👈
+    console.log('NEW refreshToken:', newRefreshToken); // 👈
+    console.log('Are they the same?:', refreshToken === newRefreshToken); // 👈
 
+    const newHash = await bcrypt.hash(this.hashToken(newRefreshToken), 10);
+
+    console.log('New hash:', newHash);
+
+    // verify exactly what we are storing
+    const verifyHash = await bcrypt.compare(
+      this.hashToken(newRefreshToken),
+      newHash,
+    );
+    const verifyOldHash = await bcrypt.compare(
+      this.hashToken(refreshToken),
+      newHash,
+    );
+
+    console.log('newRefreshToken matches newHash:', verifyHash); // should be true
+    console.log('OLD refreshToken matches newHash:', verifyOldHash); // should be false
+
+    //  INSERT new session
     await this.pool.query(
-      'UPDATE user_sessions SET refresh_token_hash = ? WHERE id = ?',
-      [newHash, matchedSession.id],
+      `INSERT INTO user_sessions 
+     (user_id, refresh_token_hash, user_agent, ip_address, expires_at)
+     VALUES (?, ?, ?, ?, ?)`,
+      [
+        payload.unique_id,
+        newHash,
+        matchedSession.user_agent,
+        matchedSession.ip_address,
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      ],
     );
 
     const newAccessToken = jwt.sign(
@@ -249,15 +300,15 @@ export class AuthService {
     }
 
     const [sessions] = await this.pool.query<SessionRow[]>(
-      'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = 0',
-      [payload.id],
+      'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = "No"',
+      [payload.unique_id],
     );
 
     let matchedSession: SessionRow | null = null;
 
     for (const session of sessions) {
       const isMatch = await bcrypt.compare(
-        refreshToken,
+        this.hashToken(refreshToken),
         session.refresh_token_hash,
       );
       if (isMatch) {
@@ -271,7 +322,7 @@ export class AuthService {
     }
 
     await this.pool.query<SessionRow[]>(
-      'UPDATE user_sessions SET is_revoked = 1 WHERE id = ?',
+      'UPDATE user_sessions SET is_revoked = "Yes" WHERE id = ?',
       [matchedSession.id],
     );
 
