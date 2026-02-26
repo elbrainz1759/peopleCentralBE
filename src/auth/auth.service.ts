@@ -26,7 +26,7 @@ interface SessionRow extends mysql.RowDataPacket {
   user_agent: string | null;
   ip_address: string | null;
   expires_at: Date;
-  is_revoked: boolean;
+  is_revoked: number; // 0 or 1
 }
 
 interface Payload {
@@ -152,14 +152,17 @@ export class AuthService {
     let payload: Payload;
 
     try {
-      payload = jwt.verify(refreshToken, process.env.JWT_SECRET!) as Payload;
+      payload = jwt.verify(
+        refreshToken,
+        process.env.JWT_REFRESH_SECRET!,
+      ) as Payload;
     } catch (error) {
       console.error('Refresh token error:', error);
       throw new UnauthorizedException('Invalid refresh token');
     }
 
     const [sessions] = await this.pool.query<SessionRow[]>(
-      'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = FALSE',
+      'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = 0',
       [payload.id],
     );
 
@@ -179,7 +182,7 @@ export class AuthService {
     if (!matchedSession) {
       // Potential reuse attack → revoke all sessions
       await this.pool.query(
-        'UPDATE user_sessions SET is_revoked = TRUE WHERE user_id = ?',
+        'UPDATE user_sessions SET is_revoked = 1 WHERE user_id = ?',
         [payload.id],
       );
 
@@ -235,7 +238,7 @@ export class AuthService {
     }
 
     const [sessions] = await this.pool.query<SessionRow[]>(
-      'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = FALSE',
+      'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = 0',
       [payload.id],
     );
 
@@ -257,7 +260,7 @@ export class AuthService {
     }
 
     await this.pool.query<SessionRow[]>(
-      'UPDATE user_sessions SET is_revoked = TRUE WHERE id = ?',
+      'UPDATE user_sessions SET is_revoked = 1 WHERE id = ?',
       [matchedSession.id],
     );
 
