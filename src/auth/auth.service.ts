@@ -113,6 +113,8 @@ export class AuthService {
         unique_id: user.unique_id,
       };
 
+      console.log(payload);
+
       // Generate Access Token
       const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, {
         expiresIn: '15m',
@@ -161,9 +163,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
+    console.log(payload);
+
     const [sessions] = await this.pool.query<SessionRow[]>(
       'SELECT * FROM user_sessions WHERE user_id = ? AND is_revoked = 0',
-      [payload.id],
+      [payload.unique_id],
     );
 
     let matchedSession: SessionRow | null = null;
@@ -179,11 +183,13 @@ export class AuthService {
       }
     }
 
+    console.log(matchedSession);
+
     if (!matchedSession) {
       // Potential reuse attack → revoke all sessions
       await this.pool.query(
         'UPDATE user_sessions SET is_revoked = 1 WHERE user_id = ?',
-        [payload.id],
+        [payload.unique_id],
       );
 
       throw new UnauthorizedException('Refresh token reuse detected');
@@ -195,8 +201,9 @@ export class AuthService {
         id: payload.id,
         email: payload.email,
         role: payload.role,
+        unique_id: payload.unique_id,
       },
-      process.env.JWT_SECRET!,
+      process.env.JWT_REFRESH_SECRET!,
       { expiresIn: '7d' },
     );
 
@@ -212,6 +219,7 @@ export class AuthService {
         id: payload.id,
         email: payload.email,
         role: payload.role,
+        unique_id: payload.unique_id,
       },
       process.env.JWT_SECRET!,
       { expiresIn: '15m' },
@@ -231,7 +239,10 @@ export class AuthService {
     let payload: Payload;
 
     try {
-      payload = jwt.verify(refreshToken, process.env.JWT_SECRET!) as Payload;
+      payload = jwt.verify(
+        refreshToken,
+        process.env.JWT_REFRESH_SECRET!,
+      ) as Payload;
     } catch (error) {
       console.error('Logout error:', error);
       throw new UnauthorizedException('Invalid token');
