@@ -10,8 +10,6 @@ import { randomBytes } from 'crypto';
 import * as mysql from 'mysql2/promise';
 import { createHash } from 'crypto';
 
-// helper function
-
 interface UserRow extends mysql.RowDataPacket {
   id: number;
   email: string;
