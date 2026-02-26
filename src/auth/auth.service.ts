@@ -16,6 +16,7 @@ interface UserRow extends mysql.RowDataPacket {
   password?: string;
   reset_token?: string | null;
   reset_token_expiry?: Date | null;
+  unique_id?: string;
 }
 
 interface SessionRow extends mysql.RowDataPacket {
@@ -33,6 +34,7 @@ interface Payload {
   email: string;
   role: string;
   staff_id?: number | null;
+  unique_id: string;
 }
 
 interface RequestMetadata {
@@ -75,12 +77,14 @@ export class AuthService {
 
       const hashed = await bcrypt.hash(password, 10);
 
+      const unique_id: string = randomBytes(16).toString('hex');
+
       await this.pool.query<mysql.ResultSetHeader>(
-        'INSERT INTO users (email, password, role) VALUES (?, ?, ?)',
-        [email, hashed, role],
+        'INSERT INTO users (email, password, role, unique_id) VALUES (?, ?, ?, ?)',
+        [email, hashed, role, unique_id],
       );
 
-      return { message: 'User registered successfully' };
+      return { message: 'User registered successfully', unique_id };
     } catch (err) {
       console.error('Registration error:', err);
       throw new BadRequestException('Registration failed');
@@ -106,6 +110,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
+        unique_id: user.unique_id,
       };
 
       // Generate Access Token
@@ -124,7 +129,7 @@ export class AuthService {
      (user_id, refresh_token_hash, user_agent, ip_address, expires_at)
      VALUES (?, ?, ?, ?, ?)`,
         [
-          user.id,
+          user.unique_id,
           refreshHash,
           metadata.userAgent || null,
           metadata.ip || null,
