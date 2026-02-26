@@ -24,4 +24,4 @@ jobs:
             git pull origin main
             npm install
             npm run build
-            pm2 restart performanceTracker_BE --update-env
+            pm2 restart nest-backend --update-env
