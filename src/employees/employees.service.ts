@@ -42,7 +42,7 @@ export class EmployeeService {
 
     const unique_id: string = randomBytes(16).toString('hex');
 
-    const created_by: string = createEmployeeDto.created_by || 'System';
+    const created_by: string = 'System';
 
     try {
       const [result] = await this.pool.query<mysql.ResultSetHeader>(

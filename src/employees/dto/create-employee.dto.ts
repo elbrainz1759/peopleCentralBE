@@ -3,10 +3,6 @@ import { IsString, IsEmail, IsNotEmpty, IsInt } from 'class-validator';
 export class CreateEmployeeDto {
   @IsString()
   @IsNotEmpty()
-  unique_id: string;
-
-  @IsString()
-  @IsNotEmpty()
   first_name: string;
 
   @IsString()
@@ -32,8 +28,4 @@ export class CreateEmployeeDto {
   @IsString()
   @IsNotEmpty()
   program: string;
-
-  @IsString()
-  @IsNotEmpty()
-  created_by: string;
 }

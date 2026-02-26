@@ -5,8 +5,8 @@ import { LoginDto } from './dto/login.dto';
 import { RequestResetDto } from './dto/requestReset.dto';
 import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { RequestRefreshDto } from './dto/refresh.dto';
-import { Public } from './decorators/public.decorator';
-import { RequestMetadata } from './decorators/requestMetadata.decorator';
+import { Public } from '../decorators/public.decorator';
+import { RequestMetadata } from '../decorators/requestMetadata.decorator';
 interface AuthenticatedRequest extends Request {
   user: {
     userId: string;

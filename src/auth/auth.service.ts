@@ -49,10 +49,16 @@ export class AuthService {
     if (!email || !password || !role) {
       throw new BadRequestException('Email and password are required');
     }
+
+    // validating role
+
+    if (!['User', 'Admin', 'Superadmin'].includes(role)) {
+      throw new BadRequestException('Invalid role');
+    }
     try {
       //Check if employee exists in employees table
       const [empRows] = await this.pool.query<UserRow[]>(
-        'SELECT id FROM employees WHERE email = ?',
+        'SELECT id FROM employee WHERE email = ?',
         [email],
       );
       if (empRows.length === 0) {
