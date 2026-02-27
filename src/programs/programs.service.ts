@@ -140,6 +140,8 @@ export class ProgramsService {
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
     }
   }
 
@@ -169,7 +171,13 @@ export class ProgramsService {
   async update(id: number, dto: UpdateProgramDto): Promise<Program> {
     const conn = await this.pool.getConnection();
     try {
-      await this.findOne(id); // 404 guard
+      const [findProgram] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id FROM programs WHERE id = ?',
+        [id],
+      );
+      if (!findProgram.length) {
+        throw new NotFoundException(`Program with id ${id} not found`);
+      }
 
       const fields = Object.keys(dto) as (keyof UpdateProgramDto)[];
       if (!fields.length) return this.findOne(id);
@@ -195,7 +203,13 @@ export class ProgramsService {
   async remove(id: number): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
-      await this.findOne(id); // 404 guard
+      const [findProgram] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id FROM programs WHERE id = ?',
+        [id],
+      );
+      if (!findProgram.length) {
+        throw new NotFoundException(`Program with id ${id} not found`);
+      }
 
       await conn.execute('DELETE FROM programs WHERE id = ?', [id]);
 
