@@ -10,19 +10,24 @@ import * as mysql from 'mysql2/promise';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { randomBytes } from 'crypto';
+import { FindEmployeesDto } from './dto/find-employee.dto';
 
 export interface EmployeeRow extends mysql.RowDataPacket {
   id: number;
   unique_id: string;
-  first_name: string;
-  last_name: string;
-  staff_id: number;
+  name: string;
   email: string;
-  location: string;
-  supervisor: string;
-  program: string;
+  staff_id: number;
   created_by?: string;
   created_at: Date;
+  location_name: string | null;
+  department_name: string | null;
+  program_name: string | null;
+  supervisor_name: string | null;
+}
+
+interface CountResult extends mysql.RowDataPacket {
+  total: number;
 }
 
 @Injectable()
@@ -36,8 +41,9 @@ export class EmployeeService {
       staff_id,
       email,
       location,
+      departmentId,
       supervisor,
-      program,
+      programId,
     } = createEmployeeDto;
 
     const unique_id: string = randomBytes(16).toString('hex');
@@ -45,40 +51,156 @@ export class EmployeeService {
     const created_by: string = 'System';
 
     try {
-      const [result] = await this.pool.query<mysql.ResultSetHeader>(
-        `INSERT INTO employee (unique_id, first_name, last_name, staff_id, email, location, supervisor, program, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          unique_id,
-          first_name,
-          last_name,
-          staff_id,
-          email,
-          location,
-          supervisor,
-          program,
-          created_by,
-        ],
+      //Check if department exists
+      const [deptRows] = await this.pool.query<mysql.RowDataPacket[]>(
+        'SELECT unique_id FROM department WHERE unique_id = ?',
+        [departmentId],
       );
 
-      return { id: result.insertId, ...createEmployeeDto };
-    } catch (error) {
-      console.error('Create employee error:', error);
+      if (deptRows.length === 0) {
+        throw new NotFoundException(
+          `Department with unique_id ${departmentId} not found`,
+        );
+      }
 
-      throw new InternalServerErrorException('Failed to create employee');
+      //check if program exists
+
+      const [progRows] = await this.pool.query<mysql.RowDataPacket[]>(
+        'SELECT unique_id FROM program WHERE unique_id = ?',
+        [programId],
+      );
+      if (progRows.length === 0) {
+        throw new NotFoundException(
+          `Program with unique_id ${programId} not found`,
+        );
+      }
+
+      try {
+        const [result] = await this.pool.query<mysql.ResultSetHeader>(
+          `INSERT INTO employee (unique_id, first_name, last_name, staff_id, email, location, department, supervisor, program, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            unique_id,
+            first_name,
+            last_name,
+            staff_id,
+            email,
+            location,
+            departmentId,
+            supervisor,
+            programId,
+            created_by,
+          ],
+        );
+
+        return { id: result.insertId, ...createEmployeeDto };
+      } catch (error) {
+        console.error('Create employee error:', error);
+
+        throw new InternalServerErrorException('Failed to create employee');
+      }
+    } catch (error) {
+      console.error('Department validation error:', error);
+      return { message: 'Failed to create employee' };
     }
   }
 
-  async findAll() {
-    try {
-      const [rows] = await this.pool.query<EmployeeRow[]>(
-        'SELECT * FROM employee',
-      );
-      return rows;
-    } catch (error) {
-      console.error('Find all employees error:', error);
-      throw new InternalServerErrorException('Failed to fetch employees');
+  async findAll(query: FindEmployeesDto) {
+    const {
+      name,
+      staff_id,
+      email,
+      location,
+      supervisor,
+      departmentId,
+      programId,
+      page = 1,
+      limit = 10,
+    } = query;
+
+    const offset = (page - 1) * limit;
+
+    let baseSql = `
+    FROM employees e
+    LEFT JOIN locations l 
+      ON e.location_unique_id = l.unique_id
+    LEFT JOIN departments d 
+      ON e.department_unique_id = d.unique_id
+    LEFT JOIN programs p 
+      ON e.program_unique_id = p.unique_id
+    LEFT JOIN employees s
+      ON e.supervisor_unique_id = s.unique_id
+    WHERE 1=1
+  `;
+
+    const params: (string | number)[] = [];
+
+    if (name) {
+      baseSql += ` AND e.name LIKE ?`;
+      params.push(`%${name}%`);
     }
+
+    if (staff_id) {
+      baseSql += ` AND e.staff_id LIKE ?`;
+      params.push(`%${staff_id}%`);
+    }
+
+    if (email) {
+      baseSql += ` AND e.email LIKE ?`;
+      params.push(`%${email}%`);
+    }
+
+    if (location) {
+      baseSql += ` AND l.unique_id = ?`;
+      params.push(location);
+    }
+
+    if (supervisor) {
+      baseSql += ` AND s.unique_id = ?`;
+      params.push(supervisor);
+    }
+
+    if (departmentId) {
+      baseSql += ` AND d.unique_id = ?`;
+      params.push(departmentId);
+    }
+
+    if (programId) {
+      baseSql += ` AND p.unique_id = ?`;
+      params.push(programId);
+    }
+
+    // Get total count
+    const countSql = `SELECT COUNT(*) AS total ${baseSql}`;
+    const [countRows] = await this.pool.query<CountResult[]>(countSql, params);
+    const total = countRows[0]?.total ?? 0;
+
+    // Get paginated data
+    const dataSql = `
+    SELECT 
+      e.*,
+      l.name AS location_name,
+      d.name AS department_name,
+      p.name AS program_name,
+      s.name AS supervisor_name
+    ${baseSql}
+    ORDER BY e.created_at DESC
+    LIMIT ? OFFSET ?
+  `;
+
+    const dataParams: (string | number)[] = [...params, limit, offset];
+
+    const [rows] = await this.pool.query<EmployeeRow[]>(dataSql, dataParams);
+
+    return {
+      data: rows,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findOne(id: number) {

@@ -14,6 +14,7 @@ import { EmployeeService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Public } from '../decorators/public.decorator';
+import { FindEmployeesDto } from './dto/find-employee.dto';
 
 @Controller('employees')
 export class EmployeeController {
@@ -28,8 +29,8 @@ export class EmployeeController {
 
   @Public()
   @Get()
-  findAll() {
-    return this.employeeService.findAll();
+  findAll(@Body() query: FindEmployeesDto) {
+    return this.employeeService.findAll(query);
   }
 
   @Get(':id')
