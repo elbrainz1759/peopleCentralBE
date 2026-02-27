@@ -27,9 +27,13 @@ export class UpdateEmployeeDto {
 
   @IsOptional()
   @IsString()
-  program?: string;
+  programId?: string;
 
   @IsOptional()
   @IsString()
   created_by?: string;
+
+  @IsOptional()
+  @IsString()
+  departmentId?: string;
 }

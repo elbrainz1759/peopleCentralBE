@@ -27,5 +27,9 @@ export class CreateEmployeeDto {
 
   @IsString()
   @IsNotEmpty()
-  program: string;
+  programId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  departmentId: string;
 }
