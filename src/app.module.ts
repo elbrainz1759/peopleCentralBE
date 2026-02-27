@@ -11,6 +11,11 @@ import { EmployeeModule } from './employees/employees.module';
 import { LeaveModule } from './leave/leave.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ExitModule } from './exit/exit.module';
+import { CountriesModule } from './countries/countries.module';
+import { LeaveTypesModule } from './leave-types/leave-types.module';
+import { LocationsModule } from './locations/locations.module';
+import { DepartmentsModule } from './departments/departments.module';
+import { ProgramsModule } from './programs/programs.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -20,6 +25,11 @@ import { ExitModule } from './exit/exit.module';
     LeaveModule,
     DashboardModule,
     ExitModule,
+    CountriesModule,
+    LeaveTypesModule,
+    LocationsModule,
+    DepartmentsModule,
+    ProgramsModule,
   ],
   controllers: [AppController],
   providers: [
