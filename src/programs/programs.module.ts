@@ -4,6 +4,7 @@ import { ProgramsService } from './programs.service';
 
 @Module({
   controllers: [ProgramsController],
-  providers: [ProgramsService]
+  providers: [ProgramsService],
+  exports: [ProgramsService],
 })
 export class ProgramsModule {}
