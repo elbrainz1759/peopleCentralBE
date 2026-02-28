@@ -53,7 +53,7 @@ export class EmployeeService {
     try {
       //Check if department exists
       const [deptRows] = await this.pool.query<mysql.RowDataPacket[]>(
-        'SELECT unique_id FROM department WHERE unique_id = ?',
+        'SELECT unique_id FROM departments WHERE unique_id = ?',
         [departmentId],
       );
 
@@ -66,7 +66,7 @@ export class EmployeeService {
       //check if program exists
 
       const [progRows] = await this.pool.query<mysql.RowDataPacket[]>(
-        'SELECT unique_id FROM program WHERE unique_id = ?',
+        'SELECT unique_id FROM programs WHERE unique_id = ?',
         [programId],
       );
       if (progRows.length === 0) {
