@@ -11,7 +11,7 @@ export class CreateEmployeeDto {
 
   @IsInt()
   @IsNotEmpty()
-  staff_id: number;
+  staffId: number;
 
   @IsEmail()
   @IsNotEmpty()

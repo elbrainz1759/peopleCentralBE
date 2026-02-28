@@ -38,7 +38,7 @@ export class EmployeeService {
     const {
       first_name,
       last_name,
-      staff_id,
+      staffId,
       email,
       location,
       departmentId,
@@ -83,7 +83,7 @@ export class EmployeeService {
             unique_id,
             first_name,
             last_name,
-            staff_id,
+            staffId,
             email,
             location,
             departmentId,
