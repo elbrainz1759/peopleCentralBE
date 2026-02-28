@@ -3,10 +3,6 @@ import { IsString, IsNotEmpty } from 'class-validator';
 export class CreateLeaveTypeDto {
   @IsString()
   @IsNotEmpty()
-  unique_id: string;
-
-  @IsString()
-  @IsNotEmpty()
   name: string;
 
   @IsString()
@@ -16,8 +12,4 @@ export class CreateLeaveTypeDto {
   @IsString()
   @IsNotEmpty()
   country: string;
-
-  @IsString()
-  @IsNotEmpty()
-  created_by: string;
 }

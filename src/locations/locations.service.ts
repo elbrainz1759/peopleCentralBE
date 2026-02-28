@@ -9,6 +9,7 @@ import * as mysql from 'mysql2/promise';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { randomBytes } from 'crypto';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -41,19 +42,22 @@ export class LocationsService {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM locations WHERE unique_id = ?',
-        [dto.unique_id],
+        'SELECT id FROM locations WHERE name = ?',
+        [dto.name],
       );
       if (existing.length > 0) {
         throw new ConflictException(
-          `Location with unique_id "${dto.unique_id}" already exists`,
+          `Location with name "${dto.name}" already exists`,
         );
       }
+
+      const unique_id: string = randomBytes(16).toString('hex');
+      const created_by: string = 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO locations (unique_id, name, created_by)
          VALUES (?, ?, ?)`,
-        [dto.unique_id, dto.name, dto.created_by],
+        [unique_id, dto.name, created_by],
       );
 
       return this.findOne(result.insertId);

@@ -11,6 +11,7 @@ import {
   UpdateProgramDto,
   PaginationQueryDto,
 } from './dto/program.dto';
+import { randomBytes } from 'crypto';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -46,25 +47,28 @@ export class ProgramsService {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM programs WHERE unique_id = ?',
-        [dto.unique_id],
+        'SELECT id FROM programs WHERE fund_code = ?',
+        [dto.fundCode],
       );
       if (existing.length > 0) {
         throw new ConflictException(
-          `Program with unique_id "${dto.unique_id}" already exists`,
+          `Program with fund_code "${dto.fundCode}" already exists`,
         );
       }
+
+      const unique_id: string = randomBytes(16).toString('hex');
+      const created_by: string = 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO programs (unique_id, name, fund_code, start_date, end_date, created_by)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
-          dto.unique_id,
+          unique_id,
           dto.name,
-          dto.fund_code,
-          dto.start_date,
-          dto.end_date,
-          dto.created_by,
+          dto.fundCode,
+          dto.startDate,
+          dto.endDate,
+          created_by,
         ],
       );
 

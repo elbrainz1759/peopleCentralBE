@@ -11,27 +11,19 @@ import { Type } from 'class-transformer';
 export class CreateProgramDto {
   @IsString()
   @IsNotEmpty()
-  unique_id: string;
-
-  @IsString()
-  @IsNotEmpty()
   name: string;
 
   @IsInt()
   @IsNotEmpty()
-  fund_code: number;
+  fundCode: number;
 
   @IsDateString()
   @IsNotEmpty()
-  start_date: string;
+  startDate: string;
 
   @IsDateString()
   @IsNotEmpty()
-  end_date: string;
-
-  @IsString()
-  @IsNotEmpty()
-  created_by: string;
+  endDate: string;
 }
 
 export class UpdateProgramDto {
@@ -41,15 +33,15 @@ export class UpdateProgramDto {
 
   @IsInt()
   @IsOptional()
-  fund_code?: number;
+  fundCode?: number;
 
   @IsDateString()
   @IsOptional()
-  start_date?: string;
+  startDate?: string;
 
   @IsDateString()
   @IsOptional()
-  end_date?: string;
+  endDate?: string;
 }
 
 export class PaginationQueryDto {

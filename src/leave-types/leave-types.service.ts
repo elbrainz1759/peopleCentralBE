@@ -9,6 +9,7 @@ import * as mysql from 'mysql2/promise';
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { randomBytes } from 'crypto';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -43,19 +44,22 @@ export class LeaveTypesService {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM leave_types WHERE unique_id = ?',
-        [dto.unique_id],
+        'SELECT id FROM leave_types WHERE name = ?',
+        [dto.name],
       );
       if (existing.length > 0) {
         throw new ConflictException(
-          `Leave type with unique_id "${dto.unique_id}" already exists`,
+          `Leave type with name "${dto.name}" already exists`,
         );
       }
+
+      const unique_id: string = randomBytes(16).toString('hex');
+      const created_by: string = 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leave_types (unique_id, name, description, country, created_by)
          VALUES (?, ?, ?, ?, ?)`,
-        [dto.unique_id, dto.name, dto.description, dto.country, dto.created_by],
+        [unique_id, dto.name, dto.description, dto.country, created_by],
       );
 
       return this.findOne(result.insertId);
