@@ -143,7 +143,7 @@ export class EmployeeService {
     }
   }
 
-  async findAll(query: FindEmployeesDto) {
+  async findAll(query?: FindEmployeesDto) {
     const {
       firstName,
       lastName,
@@ -155,7 +155,7 @@ export class EmployeeService {
       programId,
       page = 1,
       limit = 10,
-    } = query;
+    } = query ?? {};
 
     const offset = (page - 1) * limit;
 

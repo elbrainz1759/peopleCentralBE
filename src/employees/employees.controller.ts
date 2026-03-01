@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { EmployeeService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -29,7 +30,7 @@ export class EmployeeController {
 
   @Public()
   @Get()
-  findAll(@Body() query: FindEmployeesDto) {
+  findAll(@Query() query: FindEmployeesDto) {
     return this.employeeService.findAll(query);
   }
 
