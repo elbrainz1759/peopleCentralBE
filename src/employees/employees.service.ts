@@ -160,14 +160,14 @@ export class EmployeeService {
     const offset = (page - 1) * limit;
 
     let baseSql = `
-    FROM employees e
+    FROM employee e
     LEFT JOIN locations l 
       ON e.location_unique_id = l.unique_id
     LEFT JOIN departments d 
       ON e.department_unique_id = d.unique_id
     LEFT JOIN programs p 
       ON e.program_unique_id = p.unique_id
-    LEFT JOIN employees s
+    LEFT JOIN employee s
       ON e.supervisor_unique_id = s.unique_id
     WHERE 1=1
   `;
