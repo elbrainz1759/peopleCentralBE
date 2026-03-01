@@ -32,4 +32,8 @@ export class CreateEmployeeDto {
   @IsString()
   @IsNotEmpty()
   departmentId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  countryId: string;
 }
