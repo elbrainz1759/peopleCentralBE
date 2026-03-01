@@ -226,7 +226,9 @@ export class EmployeeService {
       l.name AS location_name,
       d.name AS department_name,
       p.name AS program_name,
-      s.name AS supervisor_name
+      s.first_name AS supervisor_first_name,
+      s.last_name AS supervisor_last_name,
+      CONCAT(s.first_name, ' ', s.last_name) AS supervisor_name
     ${baseSql}
     ORDER BY e.created_at DESC
     LIMIT ? OFFSET ?
