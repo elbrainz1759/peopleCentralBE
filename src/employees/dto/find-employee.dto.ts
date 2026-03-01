@@ -4,11 +4,15 @@ import { Type } from 'class-transformer';
 export class FindEmployeesDto {
   @IsOptional()
   @IsString()
-  name?: string;
+  firstName?: string;
 
   @IsOptional()
   @IsString()
-  staff_id?: string;
+  lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  staffId?: string;
 
   @IsOptional()
   @IsString()
@@ -16,11 +20,11 @@ export class FindEmployeesDto {
 
   @IsOptional()
   @IsString()
-  location?: string;
+  locationId?: string;
 
   @IsOptional()
   @IsString()
-  supervisor?: string;
+  supervisorId?: string;
 
   @IsOptional()
   @IsString()
@@ -30,7 +34,7 @@ export class FindEmployeesDto {
   @IsString()
   programId?: string;
 
-  // ✅ Pagination
+  //  Pagination
   @IsOptional()
   @Type(() => Number)
   @IsInt()

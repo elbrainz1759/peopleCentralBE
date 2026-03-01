@@ -107,11 +107,12 @@ export class EmployeeService {
 
   async findAll(query: FindEmployeesDto) {
     const {
-      name,
-      staff_id,
+      firstName,
+      lastName,
+      staffId,
       email,
-      location,
-      supervisor,
+      locationId,
+      supervisorId,
       departmentId,
       programId,
       page = 1,
@@ -135,14 +136,19 @@ export class EmployeeService {
 
     const params: (string | number)[] = [];
 
-    if (name) {
-      baseSql += ` AND e.name LIKE ?`;
-      params.push(`%${name}%`);
+    if (firstName) {
+      baseSql += ` AND e.first_name LIKE ?`;
+      params.push(`%${firstName}%`);
     }
 
-    if (staff_id) {
+    if (lastName) {
+      baseSql += ` AND e.last_name LIKE ?`;
+      params.push(`%${lastName}%`);
+    }
+
+    if (staffId) {
       baseSql += ` AND e.staff_id LIKE ?`;
-      params.push(`%${staff_id}%`);
+      params.push(`%${staffId}%`);
     }
 
     if (email) {
@@ -150,14 +156,14 @@ export class EmployeeService {
       params.push(`%${email}%`);
     }
 
-    if (location) {
+    if (locationId) {
       baseSql += ` AND l.unique_id = ?`;
-      params.push(location);
+      params.push(locationId);
     }
 
-    if (supervisor) {
+    if (supervisorId) {
       baseSql += ` AND s.unique_id = ?`;
-      params.push(supervisor);
+      params.push(supervisorId);
     }
 
     if (departmentId) {
