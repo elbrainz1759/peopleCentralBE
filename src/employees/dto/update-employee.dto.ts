@@ -3,15 +3,15 @@ import { IsString, IsEmail, IsInt, IsOptional } from 'class-validator';
 export class UpdateEmployeeDto {
   @IsOptional()
   @IsString()
-  first_name?: string;
+  firstName?: string;
 
   @IsOptional()
   @IsString()
-  last_name?: string;
+  lastName?: string;
 
   @IsOptional()
   @IsInt()
-  staff_id?: number;
+  staffId?: number;
 
   @IsOptional()
   @IsEmail()
@@ -19,11 +19,11 @@ export class UpdateEmployeeDto {
 
   @IsOptional()
   @IsString()
-  location?: string;
+  locationId?: string;
 
   @IsOptional()
   @IsString()
-  supervisor?: string;
+  supervisorId?: string;
 
   @IsOptional()
   @IsString()

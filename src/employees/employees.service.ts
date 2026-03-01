@@ -44,6 +44,7 @@ export class EmployeeService {
       departmentId,
       supervisor,
       programId,
+      countryId,
     } = createEmployeeDto;
 
     const unique_id: string = randomBytes(16).toString('hex');
@@ -75,10 +76,46 @@ export class EmployeeService {
         );
       }
 
+      //check if country exists
+      const [countryRows] = await this.pool.query<mysql.RowDataPacket[]>(
+        'SELECT unique_id FROM countries WHERE unique_id = ?',
+        [countryId],
+      );
+
+      if (countryRows.length === 0) {
+        throw new NotFoundException(
+          `Country with unique_id ${countryId} not found`,
+        );
+      }
+
+      //check if supervisor exists (if provided)
+      if (supervisor) {
+        const [supervisorRows] = await this.pool.query<mysql.RowDataPacket[]>(
+          'SELECT unique_id FROM employee WHERE unique_id = ?',
+          [supervisor],
+        );
+        if (supervisorRows.length === 0) {
+          throw new NotFoundException(
+            `Supervisor with unique_id ${supervisor} not found`,
+          );
+        }
+      }
+      //check if location exists (if provided)
+      if (location) {
+        const [locationRows] = await this.pool.query<mysql.RowDataPacket[]>(
+          'SELECT unique_id FROM locations WHERE unique_id = ?',
+          [location],
+        );
+        if (locationRows.length === 0) {
+          throw new NotFoundException(
+            `Location with unique_id ${location} not found`,
+          );
+        }
+      }
       try {
         const [result] = await this.pool.query<mysql.ResultSetHeader>(
-          `INSERT INTO employee (unique_id, first_name, last_name, staff_id, email, location, department, supervisor, program, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO employee (unique_id, first_name, last_name, staff_id, email, location, department, supervisor, program, country, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             unique_id,
             first_name,
@@ -89,6 +126,7 @@ export class EmployeeService {
             departmentId,
             supervisor,
             programId,
+            countryId,
             created_by,
           ],
         );
