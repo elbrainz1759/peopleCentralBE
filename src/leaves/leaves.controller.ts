@@ -42,7 +42,7 @@ export class LeavesController {
   @Patch(':id/review')
   review(@Param('id', ParseIntPipe) id: number) {
     // TODO: replace 'system' with req.user.username from your auth guard
-    return this.leavesService.review(id, 'system');
+    return this.leavesService.review(id);
   }
 
   // PATCH /leaves/:id/approve  (Supervisor approves + balance deducted)

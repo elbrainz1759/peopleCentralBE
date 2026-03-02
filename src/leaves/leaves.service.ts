@@ -17,8 +17,6 @@ import {
   rangesOverlap,
 } from '../utils/leave-hours.util';
 
-// ─── Interfaces ────────────────────────────────────────────────────────────────
-
 export interface Leave {
   id: number;
   unique_id: string;
@@ -51,8 +49,6 @@ export interface PaginatedResult<T> {
   };
 }
 
-// ─── Service ───────────────────────────────────────────────────────────────────
-
 @Injectable()
 export class LeavesService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
@@ -61,7 +57,7 @@ export class LeavesService {
   async create(dto: CreateLeaveDto, createdBy: string): Promise<Leave> {
     const conn = await this.pool.getConnection();
     try {
-      // 1. Validate no internal overlaps within the submitted ranges
+      // Validate no internal overlaps within the submitted ranges
       const internalOverlap = findInternalOverlap(dto.leaveDuration);
       if (internalOverlap) {
         throw new BadRequestException(
@@ -69,7 +65,7 @@ export class LeavesService {
         );
       }
 
-      // 2. Validate all endDates are >= startDates
+      // Validate all endDates are >= startDates
       for (const [i, d] of dto.leaveDuration.entries()) {
         if (d.endDate < d.startDate) {
           throw new BadRequestException(
@@ -78,7 +74,7 @@ export class LeavesService {
         }
       }
 
-      // 3. Check for overlap against existing approved/pending leaves for same staff
+      // Check for overlap against existing approved/pending leaves for same staff
       const [existingDurations] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ld.start_date, ld.end_date
          FROM leave_durations ld
@@ -104,7 +100,7 @@ export class LeavesService {
         }
       }
 
-      // 4. Calculate hours per range and total
+      // Calculate hours per range and total
       const totalHours = calculateTotalHours(dto.leaveDuration);
       if (totalHours === 0) {
         throw new BadRequestException(
@@ -112,7 +108,7 @@ export class LeavesService {
         );
       }
 
-      // 5. Check leave balance
+      // Check leave balance
       const [balanceRows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT id, remaining_hours FROM leave_balances
          WHERE staff_id = ? AND leave_type_id = ?`,
@@ -130,7 +126,7 @@ export class LeavesService {
         );
       }
 
-      // 6. Insert leave record
+      // Insert leave record
       await conn.beginTransaction();
 
       const uniqueId = uuidv4();
@@ -250,7 +246,7 @@ export class LeavesService {
   }
 
   // PATCH /leaves/:id/review  (HR)
-  async review(id: number, reviewedBy: string): Promise<Leave> {
+  async review(id: number): Promise<Leave> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
