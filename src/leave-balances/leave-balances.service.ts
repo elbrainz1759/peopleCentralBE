@@ -8,8 +8,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { BulkUploadLeaveBalanceDto } from './dto/bulk-upload-leave-balance.dto';
 import { MonthlyAccrualDto } from './dto/monthly-accrual.dto';
 
-// ─── Interfaces ────────────────────────────────────────────────────────────────
-
 export interface LeaveBalance {
   id: number;
   unique_id: string;
@@ -45,8 +43,6 @@ export interface PaginatedResult<T> {
     last_page: number;
   };
 }
-
-// ─── Service ───────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class LeaveBalancesService {
