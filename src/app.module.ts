@@ -16,6 +16,9 @@ import { LeaveTypesModule } from './leave-types/leave-types.module';
 import { LocationsModule } from './locations/locations.module';
 import { DepartmentsModule } from './departments/departments.module';
 import { ProgramsModule } from './programs/programs.module';
+import { LeavesModule } from './leaves/leaves.module';
+import { LeaveBalancesController } from './leave-balances/leave-balances.controller';
+import { LeaveBalancesModule } from './leave-balances/leave-balances.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -30,8 +33,10 @@ import { ProgramsModule } from './programs/programs.module';
     LocationsModule,
     DepartmentsModule,
     ProgramsModule,
+    LeavesModule,
+    LeaveBalancesModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, LeaveBalancesController],
   providers: [
     AppService,
     {
