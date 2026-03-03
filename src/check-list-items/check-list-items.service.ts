@@ -11,7 +11,7 @@ import { UpdateCheckListItemDto } from './dto/update-check-list-item.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { randomBytes } from 'crypto';
 
-export interface CheckListItemService {
+export interface CheckListItem {
   id: number;
   unique_id: string;
   name: string;
@@ -48,6 +48,17 @@ export class CheckListItemsService {
         );
       }
 
+      // check department exists
+      const [dept] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id FROM departments WHERE id = ?',
+        [dto.departmentId],
+      );
+      if (dept.length === 0) {
+        throw new NotFoundException(
+          `Department with id "${dto.departmentId}" not found`,
+        );
+      }
+
       const unique_id: string = randomBytes(16).toString('hex');
       const created_by: string = 'System';
 
@@ -77,37 +88,46 @@ export class CheckListItemsService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = '';
+      const conditions: string[] = [];
 
-      if (query.search) {
-        whereClause =
-          'WHERE name LIKE ? OR unique_id LIKE ? OR department LIKE ?';
-        const term = `%${query.search}%`;
-        params.push(term, term, term);
+      if (query.name) {
+        conditions.push('a.name LIKE ?');
+        params.push(`%${query.name}%`);
       }
 
+      if (query.departmentId) {
+        conditions.push('a.department = ?');
+        params.push(query.departmentId);
+      }
+
+      const whereClause = conditions.length
+        ? `WHERE ${conditions.join(' AND ')}`
+        : '';
+
+      const joinClause = `
+      FROM check_list_items a
+      LEFT JOIN departments d ON d.unique_id = a.department
+    `;
+
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM check_list_items ${whereClause}`,
+        `SELECT COUNT(*) AS total ${joinClause} ${whereClause}`,
         params,
       );
 
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT * FROM check_list_items ${whereClause}
-         ORDER BY created_at DESC
-         LIMIT ? OFFSET ?`,
+        `SELECT a.*, d.name AS department_name
+       ${joinClause}
+       ${whereClause}
+       ORDER BY a.created_at DESC
+       LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
 
       return {
         data: rows as CheckListItem[],
-        meta: {
-          total,
-          page,
-          limit,
-          last_page: Math.ceil(total / limit),
-        },
+        meta: { total, page, limit, last_page: Math.ceil(total / limit) },
       };
     } catch (err) {
       throw new InternalServerErrorException(err);
