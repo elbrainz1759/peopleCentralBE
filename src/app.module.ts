@@ -19,6 +19,7 @@ import { ProgramsModule } from './programs/programs.module';
 import { LeavesModule } from './leaves/leaves.module';
 import { LeaveBalancesController } from './leave-balances/leave-balances.controller';
 import { LeaveBalancesModule } from './leave-balances/leave-balances.module';
+import { CheckListItemsModule } from './check-list-items/check-list-items.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -35,6 +36,7 @@ import { LeaveBalancesModule } from './leave-balances/leave-balances.module';
     ProgramsModule,
     LeavesModule,
     LeaveBalancesModule,
+    CheckListItemsModule,
   ],
   controllers: [AppController, LeaveBalancesController],
   providers: [

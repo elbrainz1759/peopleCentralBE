@@ -191,3 +191,18 @@ CREATE TABLE `leave_balance_transactions` (
   KEY `leave_id_index`             (`leave_id`),
   CONSTRAINT `fk_lbt_balance` FOREIGN KEY (`balance_id`) REFERENCES `leave_balances` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE check_list_items (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `unique_id` VARCHAR(255) NOT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `department` VARCHAR(255) NOT NULL,
+  `created_by` VARCHAR(255) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_id_unique` (`unique_id`),
+  KEY `name_index` (`name`)
+) ENGINE=InnoDB 
+DEFAULT CHARSET=utf8mb4 
+COLLATE=utf8mb4_0900_ai_ci;

@@ -6,15 +6,16 @@ import {
   Inject,
 } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
-import { CreateCountryDto } from './dto/create-country.dto';
-import { UpdateCountryDto } from './dto/update-country.dto';
+import { CreateCheckListItemDto } from './dto/create-check-list-item.dto';
+import { UpdateCheckListItemDto } from './dto/update-check-list-item.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { randomBytes } from 'crypto';
 
-export interface Country {
+export interface CheckListItemService {
   id: number;
   unique_id: string;
   name: string;
+  department: string;
   created_by: string;
   created_at: Date;
 }
@@ -30,20 +31,20 @@ export interface PaginatedResult<T> {
 }
 
 @Injectable()
-export class CountriesService {
+export class CheckListItemsService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
-  // POST /countries
-  async create(dto: CreateCountryDto): Promise<Country> {
+  // POST /check-list-items
+  async create(dto: CreateCheckListItemDto): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM countries WHERE name = ?',
-        [dto.name],
+        'SELECT id FROM check_list_items WHERE name = ? AND department = ?',
+        [dto.name, dto.departmentId],
       );
       if (existing.length > 0) {
         throw new ConflictException(
-          `Country with name "${dto.name}" already exists`,
+          `Check list item with name "${dto.name}" already exists in this department`,
         );
       }
 
@@ -51,9 +52,9 @@ export class CountriesService {
       const created_by: string = 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO countries (unique_id, name, created_by)
-         VALUES (?, ?, ?)`,
-        [unique_id, dto.name, created_by],
+        `INSERT INTO check_list_items (unique_id, name, department, created_by)
+         VALUES (?, ?, ?, ?)`,
+        [unique_id, dto.name, dto.departmentId, created_by],
       );
 
       return this.findOne(result.insertId);
@@ -65,8 +66,10 @@ export class CountriesService {
     }
   }
 
-  // GET /countries
-  async findAll(query: PaginationQueryDto): Promise<PaginatedResult<Country>> {
+  // GET /check-list-items
+  async findAll(
+    query: PaginationQueryDto,
+  ): Promise<PaginatedResult<CheckListItem>> {
     const conn = await this.pool.getConnection();
     try {
       const page = query.page ?? 1;
@@ -77,27 +80,28 @@ export class CountriesService {
       let whereClause = '';
 
       if (query.search) {
-        whereClause = 'WHERE name LIKE ? OR unique_id LIKE ?';
+        whereClause =
+          'WHERE name LIKE ? OR unique_id LIKE ? OR department LIKE ?';
         const term = `%${query.search}%`;
-        params.push(term, term);
+        params.push(term, term, term);
       }
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM countries ${whereClause}`,
+        `SELECT COUNT(*) AS total FROM check_list_items ${whereClause}`,
         params,
       );
 
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT * FROM countries ${whereClause}
+        `SELECT * FROM check_list_items ${whereClause}
          ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
 
       return {
-        data: rows as Country[],
+        data: rows as CheckListItem[],
         meta: {
           total,
           page,
@@ -112,17 +116,17 @@ export class CountriesService {
     }
   }
 
-  // GET /countries/:id
-  async findOne(id: number): Promise<Country> {
+  // GET /check-list-items/:id
+  async findOne(id: number): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM countries WHERE id = ?',
+        'SELECT * FROM check_list_items WHERE id = ?',
         [id],
       );
       if (!rows.length)
-        throw new NotFoundException(`Country with id ${id} not found`);
-      return rows[0] as Country;
+        throw new NotFoundException(`Check list item with id ${id} not found`);
+      return rows[0] as CheckListItem;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
@@ -131,20 +135,20 @@ export class CountriesService {
     }
   }
 
-  // GET /countries/unique/:uniqueId
-  async findByUniqueId(uniqueId: string): Promise<Country> {
+  // GET /check-list-items/unique/:uniqueId
+  async findByUniqueId(uniqueId: string): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM countries WHERE unique_id = ?',
+        'SELECT * FROM check_list_items WHERE unique_id = ?',
         [uniqueId],
       );
       if (!rows.length) {
         throw new NotFoundException(
-          `Country with unique_id "${uniqueId}" not found`,
+          `Check list item with unique_id "${uniqueId}" not found`,
         );
       }
-      return rows[0] as Country;
+      return rows[0] as CheckListItem;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
@@ -153,30 +157,38 @@ export class CountriesService {
     }
   }
 
-  // PATCH /countries/:id
-  async update(id: number, dto: UpdateCountryDto): Promise<Country> {
+  // PATCH /check-list-items/:id
+  async update(
+    id: number,
+    dto: UpdateCheckListItemDto,
+  ): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
     try {
-      const [findCountry] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM countries WHERE id = ?',
+      const [findItem] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id FROM check_list_items WHERE id = ?',
         [id],
       );
-      if (!findCountry.length) {
-        throw new NotFoundException(`Country with id ${id} not found`);
+      if (!findItem.length) {
+        throw new NotFoundException(`Check list item with id ${id} not found`);
       }
 
-      const fields = (Object.keys(dto) as (keyof UpdateCountryDto)[]).filter(
-        (f) => dto[f] !== undefined,
-      );
+      const fieldMap: Record<keyof UpdateCheckListItemDto, string> = {
+        name: 'name',
+        departmentId: 'department',
+      };
+
+      const fields = (
+        Object.keys(dto) as (keyof UpdateCheckListItemDto)[]
+      ).filter((f) => dto[f] !== undefined);
       if (!fields.length) return this.findOne(id);
 
-      const setClauses = fields.map((f) => `${f} = ?`).join(', ');
+      const setClauses = fields.map((f) => `${fieldMap[f]} = ?`).join(', ');
       const values = fields.map((f) => dto[f]);
 
-      await conn.execute(`UPDATE countries SET ${setClauses} WHERE id = ?`, [
-        ...values,
-        id,
-      ]);
+      await conn.execute(
+        `UPDATE check_list_items SET ${setClauses} WHERE id = ?`,
+        [...values, id],
+      );
 
       return this.findOne(id);
     } catch (err) {
@@ -187,21 +199,21 @@ export class CountriesService {
     }
   }
 
-  // DELETE /countries/:id
+  // DELETE /check-list-items/:id
   async remove(id: number): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
-      const [findCountry] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM countries WHERE id = ?',
+      const [findItem] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id FROM check_list_items WHERE id = ?',
         [id],
       );
-      if (!findCountry.length) {
-        throw new NotFoundException(`Country with id ${id} not found`);
+      if (!findItem.length) {
+        throw new NotFoundException(`Check list item with id ${id} not found`);
       }
 
-      await conn.execute('DELETE FROM countries WHERE id = ?', [id]);
+      await conn.execute('DELETE FROM check_list_items WHERE id = ?', [id]);
 
-      return { message: `Country ${id} deleted successfully` };
+      return { message: `Check list item ${id} deleted successfully` };
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
