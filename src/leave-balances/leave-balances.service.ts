@@ -63,7 +63,7 @@ export class LeaveBalancesService {
         // Check if balance already exists for this staff + leave type
         const [existing] = await conn.query<mysql.RowDataPacket[]>(
           'SELECT id FROM leave_balances WHERE staff_id = ? AND leave_type_id = ?',
-          [b.staff_id, b.leave_type_id],
+          [b.staffId, b.leaveTypeId],
         );
 
         if (existing.length > 0) {
@@ -71,16 +71,19 @@ export class LeaveBalancesService {
           continue;
         }
 
+        const unique_id: string = uuidv4();
+        const created_by: string = 'HR Bulk Upload';
+
         const [result] = await conn.query<mysql.ResultSetHeader>(
           `INSERT INTO leave_balances (unique_id, staff_id, leave_type_id, total_hours, used_hours, remaining_hours, created_by)
            VALUES (?, ?, ?, ?, 0, ?, ?)`,
           [
-            b.unique_id,
-            b.staff_id,
-            b.leave_type_id,
-            b.total_hours,
-            b.total_hours,
-            b.created_by,
+            unique_id,
+            b.staffId,
+            b.leaveTypeId,
+            b.totalHours,
+            b.totalHours,
+            created_by,
           ],
         );
 
@@ -92,10 +95,10 @@ export class LeaveBalancesService {
           [
             uuidv4(),
             result.insertId,
-            b.staff_id,
-            b.leave_type_id,
-            b.total_hours,
-            b.created_by,
+            b.staffId,
+            b.leaveTypeId,
+            b.totalHours,
+            created_by,
           ],
         );
 
