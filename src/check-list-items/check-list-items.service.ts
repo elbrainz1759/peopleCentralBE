@@ -38,7 +38,6 @@ export class CheckListItemsService {
   async create(dto: CreateCheckListItemDto): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
 
-    console.log(dto);
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
         'SELECT id FROM check_list_items WHERE name = ? AND department = ?',
@@ -52,7 +51,7 @@ export class CheckListItemsService {
 
       // check department exists
       const [dept] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM departments WHERE id = ?',
+        'SELECT id FROM departments WHERE unique_id = ?',
         [dto.departmentId],
       );
       if (dept.length === 0) {
