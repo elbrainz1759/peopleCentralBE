@@ -37,6 +37,8 @@ export class CheckListItemsService {
   // POST /check-list-items
   async create(dto: CreateCheckListItemDto): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
+
+    console.log(dto);
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
         'SELECT id FROM check_list_items WHERE name = ? AND department = ?',
