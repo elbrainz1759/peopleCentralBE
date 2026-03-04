@@ -8,7 +8,6 @@ import { JwtAuthGuard } from './auth/jwtAuth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { UsersModule } from './users/users.module';
 import { EmployeeModule } from './employees/employees.module';
-import { LeaveModule } from './leave/leave.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ExitModule } from './exit/exit.module';
 import { CountriesModule } from './countries/countries.module';
@@ -26,7 +25,6 @@ import { CheckListItemsModule } from './check-list-items/check-list-items.module
     AuthModule,
     UsersModule,
     EmployeeModule,
-    LeaveModule,
     DashboardModule,
     ExitModule,
     CountriesModule,

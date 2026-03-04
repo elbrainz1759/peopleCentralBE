@@ -7,7 +7,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
-import { v4 as uuidv4 } from 'uuid';
+import { randomBytes } from 'crypto';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import {
@@ -129,12 +129,13 @@ export class LeavesService {
       // Insert leave record
       await conn.beginTransaction();
 
-      const uniqueId = uuidv4();
+      const unique_id = randomBytes(16).toString('hex');
+
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leaves (unique_id, staff_id, leave_type_id, reason, handover_note, total_hours, status, created_by)
          VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)`,
         [
-          uniqueId,
+          unique_id,
           dto.staffId,
           dto.leaveTypeId,
           dto.reason,
@@ -329,6 +330,7 @@ export class LeavesService {
          WHERE id = ?`,
         [leave.total_hours, leave.total_hours, balance.id],
       );
+      const unique_id = randomBytes(16).toString('hex');
 
       // Log transaction
       await conn.query(
@@ -336,7 +338,7 @@ export class LeavesService {
            (unique_id, balance_id, staff_id, leave_type_id, leave_id, type, hours, note, created_by)
          VALUES (?, ?, ?, ?, ?, 'debit', ?, ?, ?)`,
         [
-          uuidv4(),
+          unique_id,
           balance.id,
           leave.staff_id,
           leave.leave_type_id,
@@ -404,12 +406,14 @@ export class LeavesService {
             [leave.total_hours, leave.total_hours, balanceId],
           );
 
+          const unique_id = randomBytes(16).toString('hex');
+
           await conn.query(
             `INSERT INTO leave_balance_transactions
                (unique_id, balance_id, staff_id, leave_type_id, leave_id, type, hours, note, created_by)
              VALUES (?, ?, ?, ?, ?, 'reversal', ?, ?, ?)`,
             [
-              uuidv4(),
+              unique_id,
               balanceId,
               leave.staff_id,
               leave.leave_type_id,

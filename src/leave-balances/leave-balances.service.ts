@@ -4,9 +4,9 @@ import {
   Inject,
 } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
-import { v4 as uuidv4 } from 'uuid';
 import { BulkUploadLeaveBalanceDto } from './dto/bulk-upload-leave-balance.dto';
 import { MonthlyAccrualDto } from './dto/monthly-accrual.dto';
+import { randomBytes } from 'crypto';
 
 export interface LeaveBalance {
   id: number;
@@ -71,7 +71,8 @@ export class LeaveBalancesService {
           continue;
         }
 
-        const unique_id: string = uuidv4();
+        const unique_id = randomBytes(16).toString('hex');
+
         const created_by: string = 'HR Bulk Upload';
 
         const [result] = await conn.query<mysql.ResultSetHeader>(
@@ -93,7 +94,7 @@ export class LeaveBalancesService {
              (unique_id, balance_id, staff_id, leave_type_id, leave_id, type, hours, note, created_by)
            VALUES (?, ?, ?, ?, NULL, 'credit', ?, 'HR bulk upload', ?)`,
           [
-            uuidv4(),
+            unique_id,
             result.insertId,
             b.staffId,
             b.leaveTypeId,
@@ -137,13 +138,14 @@ export class LeaveBalancesService {
            WHERE id = ?`,
           [dto.hours_to_accrue, dto.hours_to_accrue, balance.id],
         );
+        const unique_id = randomBytes(16).toString('hex');
 
         await conn.query(
           `INSERT INTO leave_balance_transactions
              (unique_id, balance_id, staff_id, leave_type_id, leave_id, type, hours, note, created_by)
            VALUES (?, ?, ?, ?, NULL, 'credit', ?, 'Monthly accrual', ?)`,
           [
-            uuidv4(),
+            unique_id,
             balance.id,
             balance.staff_id,
             dto.leave_type_id,
