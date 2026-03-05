@@ -41,9 +41,5 @@ export class UpdateEmployeeDto {
 
   @IsOptional()
   @IsString()
-  created_by?: string;
-
-  @IsOptional()
-  @IsString()
   departmentId?: string;
 }
