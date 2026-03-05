@@ -29,7 +29,7 @@ export class CreateEmployeeDto {
 
   @IsString()
   @IsNotEmpty()
-  supervisor: string;
+  supervisorId: string;
 
   @IsString()
   @IsNotEmpty()

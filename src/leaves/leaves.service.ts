@@ -201,11 +201,23 @@ export class LeavesService {
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT l.*, s.name as supervisor_name, o.name as location_name, p.name as program_name, d.name AS department_name, e.name AS employee_name, e.designation AS employee_designation FROM leaves l
-         LEFT JOIN departments d ON d.unique_id = l.department_id LEFT JOIN employee e ON e.staff_id = l.staff_id
-         LEFT JOIN programs p ON p.unique_id = l.program LEFT JOIN locations o ON o.unique_id = l.location LEFT JOIN employee s ON s.staff_id = l.supervisor ${whereClause}
-         ORDER BY l.created_at DESC
-         LIMIT ? OFFSET ?`,
+        `
+        SELECT l.*, 
+  CONCAT(s.first_name, ' ', s.last_name) AS supervisor_name, 
+  o.name AS location_name, 
+  p.name AS program_name, 
+  d.name AS department_name, 
+  CONCAT(e.first_name, ' ', e.last_name) AS employee_name, 
+  e.designation AS employee_designation 
+FROM leaves l
+LEFT JOIN departments d ON d.unique_id = l.department_id 
+LEFT JOIN employee e ON e.staff_id = l.staff_id
+LEFT JOIN programs p ON p.unique_id = l.program 
+LEFT JOIN locations o ON o.unique_id = l.location 
+LEFT JOIN employee s ON s.staff_id = l.supervisor 
+${whereClause}
+ORDER BY l.created_at DESC
+LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
 
@@ -214,6 +226,7 @@ export class LeavesService {
         meta: { total, page, limit, last_page: Math.ceil(total / limit) },
       };
     } catch (err) {
+      console.error('Error fetching leaves:', err);
       throw new InternalServerErrorException(err);
     } finally {
       conn.release();
@@ -241,6 +254,7 @@ export class LeavesService {
 
       return leave;
     } catch (err) {
+      console.log(`Error fetching leave with id ${id}:`, err);
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
     } finally {
@@ -271,6 +285,7 @@ export class LeavesService {
 
       return this.findOne(id);
     } catch (err) {
+      console.log(`Error reviewing leave with id ${id}:`, err);
       if (
         err instanceof NotFoundException ||
         err instanceof BadRequestException
@@ -354,6 +369,7 @@ export class LeavesService {
       await conn.commit();
       return this.findOne(id);
     } catch (err) {
+      console.log(`Error approving leave with id ${id}:`, err);
       await conn.rollback();
       if (
         err instanceof NotFoundException ||

@@ -44,7 +44,7 @@ export class EmployeeService {
       email,
       locationId,
       departmentId,
-      supervisor,
+      supervisorId,
       programId,
       countryId,
       designation,
@@ -54,67 +54,33 @@ export class EmployeeService {
 
     const created_by: string = 'System';
 
+    const checks: Promise<void>[] = [];
+
     try {
-      //Check if department exists
-      const [deptRows] = await this.pool.query<mysql.RowDataPacket[]>(
-        'SELECT unique_id FROM departments WHERE unique_id = ?',
-        [departmentId],
-      );
-
-      if (deptRows.length === 0) {
-        throw new NotFoundException(
-          `Department with unique_id ${departmentId} not found`,
+      if (departmentId) {
+        checks.push(
+          ensureExists(this.pool, 'departments', departmentId, 'Department'),
+        );
+      }
+      if (programId) {
+        checks.push(ensureExists(this.pool, 'programs', programId, 'Program'));
+      }
+      if (countryId) {
+        checks.push(ensureExists(this.pool, 'countries', countryId, 'Country'));
+      }
+      if (locationId) {
+        checks.push(
+          ensureExists(this.pool, 'locations', locationId, 'Location'),
+        );
+      }
+      if (supervisorId) {
+        checks.push(
+          ensureExists(this.pool, 'employee', supervisorId, 'Supervisor'),
         );
       }
 
-      //check if program exists
+      await Promise.all(checks);
 
-      const [progRows] = await this.pool.query<mysql.RowDataPacket[]>(
-        'SELECT unique_id FROM programs WHERE unique_id = ?',
-        [programId],
-      );
-      if (progRows.length === 0) {
-        throw new NotFoundException(
-          `Program with unique_id ${programId} not found`,
-        );
-      }
-
-      //check if country exists
-      const [countryRows] = await this.pool.query<mysql.RowDataPacket[]>(
-        'SELECT unique_id FROM countries WHERE unique_id = ?',
-        [countryId],
-      );
-
-      if (countryRows.length === 0) {
-        throw new NotFoundException(
-          `Country with unique_id ${countryId} not found`,
-        );
-      }
-
-      //check if supervisor exists (if provided)
-      if (supervisor) {
-        const [supervisorRows] = await this.pool.query<mysql.RowDataPacket[]>(
-          'SELECT unique_id FROM employee WHERE unique_id = ?',
-          [supervisor],
-        );
-        if (supervisorRows.length === 0) {
-          throw new NotFoundException(
-            `Supervisor with unique_id ${supervisor} not found`,
-          );
-        }
-      }
-      //check if location exists (if provided)
-      if (location) {
-        const [locationRows] = await this.pool.query<mysql.RowDataPacket[]>(
-          'SELECT unique_id FROM locations WHERE unique_id = ?',
-          [location],
-        );
-        if (locationRows.length === 0) {
-          throw new NotFoundException(
-            `Location with unique_id ${locationId} not found`,
-          );
-        }
-      }
       try {
         const [result] = await this.pool.query<mysql.ResultSetHeader>(
           `INSERT INTO employee (unique_id, designation, first_name, last_name, staff_id, email, location, department, supervisor, program, country, created_by)
@@ -128,7 +94,7 @@ export class EmployeeService {
             email,
             locationId,
             departmentId,
-            supervisor,
+            supervisorId,
             programId,
             countryId,
             created_by,
