@@ -44,7 +44,7 @@ export class EmployeeController {
     return this.employeeService.findByUniqueId(unique_id);
   }
 
-  @Patch('unique/:unique_id')
+  @Patch(':unique_id')
   update(
     @Param('unique_id') unique_id: string,
     @Body() updateEmployeeDto: UpdateEmployeeDto,
@@ -52,7 +52,7 @@ export class EmployeeController {
     return this.employeeService.update(unique_id, updateEmployeeDto);
   }
 
-  @Delete('unique/:unique_id')
+  @Delete(':unique_id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('unique_id') unique_id: string) {
     return this.employeeService.remove(unique_id);
