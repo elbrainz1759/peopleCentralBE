@@ -388,7 +388,7 @@ export class EmployeeService {
 
     try {
       const [result] = await this.pool.query<mysql.ResultSetHeader>(
-        `UPDATE employees SET ${fields.join(', ')} WHERE unique_id=?`,
+        `UPDATE employee SET ${fields.join(', ')} WHERE unique_id=?`,
         values,
       );
 
