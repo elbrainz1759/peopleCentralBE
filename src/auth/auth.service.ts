@@ -18,6 +18,9 @@ interface UserRow extends mysql.RowDataPacket {
   reset_token?: string | null;
   reset_token_expiry?: Date | null;
   unique_id?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  staff_id?: number | null;
 }
 
 interface SessionRow extends mysql.RowDataPacket {
@@ -36,6 +39,8 @@ interface Payload {
   role: string;
   staff_id?: number | null;
   unique_id: string;
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
 interface RequestMetadata {
@@ -99,7 +104,7 @@ export class AuthService {
   async login(email: string, password: string, metadata: RequestMetadata) {
     try {
       const [rows] = await this.pool.query<UserRow[]>(
-        'SELECT * FROM users WHERE email = ?',
+        'SELECT a.*,e.staff_id, e.first_name as first_name, e.last_name as last_name FROM users a LEFT JOIN employee e ON a.email = e.email WHERE a.email = ?',
         [email],
       );
 
@@ -116,9 +121,10 @@ export class AuthService {
         email: user.email,
         role: user.role,
         unique_id: user.unique_id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        staff_id: user.staff_id,
       };
-
-      console.log(payload);
 
       // Generate Access Token
       const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, {
@@ -183,29 +189,23 @@ export class AuthService {
     console.log(
       'Session IDs:',
       sessions.map((s) => s.id),
-    ); // 👈
+    );
 
     let matchedSession: SessionRow | null = null;
 
     for (const session of sessions) {
-      console.log('Comparing token:', refreshToken.slice(-20)); // last 20 chars
-      console.log('Against hash:', session.refresh_token_hash);
       const isMatch = await bcrypt.compare(
         this.hashToken(refreshToken),
         session.refresh_token_hash,
       );
 
-      console.log(`Session ${session.id} isMatch:`, isMatch); // 👈
       if (isMatch) {
         matchedSession = session;
         break;
       }
     }
 
-    console.log('matchedSession:', matchedSession?.id ?? 'NULL'); // 👈
-
     if (!matchedSession) {
-      // Potential reuse attack → delete all sessions
       await this.pool.query('DELETE FROM user_sessions WHERE user_id = ?', [
         payload.unique_id,
       ]);
@@ -223,31 +223,14 @@ export class AuthService {
         email: payload.email,
         role: payload.role,
         unique_id: payload.unique_id,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
+        staff_id: payload.staff_id,
       },
       process.env.JWT_REFRESH_SECRET!,
       { expiresIn: '7d' },
     );
-
-    console.log('OLD refreshToken:', refreshToken); // 👈
-    console.log('NEW refreshToken:', newRefreshToken); // 👈
-    console.log('Are they the same?:', refreshToken === newRefreshToken); // 👈
-
     const newHash = await bcrypt.hash(this.hashToken(newRefreshToken), 10);
-
-    console.log('New hash:', newHash);
-
-    // verify exactly what we are storing
-    const verifyHash = await bcrypt.compare(
-      this.hashToken(newRefreshToken),
-      newHash,
-    );
-    const verifyOldHash = await bcrypt.compare(
-      this.hashToken(refreshToken),
-      newHash,
-    );
-
-    console.log('newRefreshToken matches newHash:', verifyHash); // should be true
-    console.log('OLD refreshToken matches newHash:', verifyOldHash); // should be false
 
     //  INSERT new session
     await this.pool.query(
