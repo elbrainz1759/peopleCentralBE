@@ -398,6 +398,7 @@ export class EmployeeService {
 
       return this.findByUniqueId(unique_id);
     } catch (error) {
+      console.error('Update employee error:', error);
       if (error instanceof NotFoundException) throw error;
       if (error instanceof BadRequestException) throw error;
       if ((error as NodeJS.ErrnoException).code === 'ER_DUP_ENTRY') {
@@ -405,6 +406,7 @@ export class EmployeeService {
           'Update conflicts with an existing unique_id, staff_id, or email',
         );
       }
+
       throw new InternalServerErrorException('Failed to update employee');
     }
   }
