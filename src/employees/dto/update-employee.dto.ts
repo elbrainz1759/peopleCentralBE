@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsString,
   IsEmail,
@@ -25,6 +26,7 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsNotEmpty()
   @IsInt()
+  @Type(() => Number)
   staffId?: number;
 
   @IsOptional()
