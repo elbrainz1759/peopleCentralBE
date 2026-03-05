@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsInt, Min } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, IsNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class FindEmployeesDto {
@@ -9,6 +9,10 @@ export class FindEmployeesDto {
   @IsOptional()
   @IsString()
   lastName?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  designation: string;
 
   @IsOptional()
   @IsString()

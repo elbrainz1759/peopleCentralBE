@@ -9,6 +9,10 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   last_name: string;
 
+  @IsString()
+  @IsNotEmpty()
+  designation: string;
+
   @IsInt()
   @IsNotEmpty()
   staffId: number;

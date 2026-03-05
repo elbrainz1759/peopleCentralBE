@@ -202,8 +202,8 @@ export class LeavesService {
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT l.*, s.name as supervisor_name, o.name as location_name, p.name as program_name, d.name AS department_name, e.name AS employee_name FROM leaves l
-         LEFT JOIN departments d ON d.unique_id = l.department_id LEFT JOIN employees e ON e.staff_id = l.staff_id
-         LEFT JOIN programs p ON p.unique_id = l.program LEFT JOIN locations o ON o.unique_id = l.location LEFT JOIN employees s ON s.staff_id = l.supervisor ${whereClause}
+         LEFT JOIN departments d ON d.unique_id = l.department_id LEFT JOIN employee e ON e.staff_id = l.staff_id
+         LEFT JOIN programs p ON p.unique_id = l.program LEFT JOIN locations o ON o.unique_id = l.location LEFT JOIN employee s ON s.staff_id = l.supervisor ${whereClause}
          ORDER BY l.created_at DESC
          LIMIT ? OFFSET ?`,
         [...params, limit, offset],

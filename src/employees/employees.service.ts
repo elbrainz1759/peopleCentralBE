@@ -19,6 +19,7 @@ export interface EmployeeRow extends mysql.RowDataPacket {
   email: string;
   staff_id: number;
   created_by?: string;
+  designation?: string;
   created_at: Date;
   location_name: string | null;
   department_name: string | null;
@@ -45,6 +46,7 @@ export class EmployeeService {
       supervisor,
       programId,
       countryId,
+      designation,
     } = createEmployeeDto;
 
     const unique_id: string = randomBytes(16).toString('hex');
@@ -114,10 +116,11 @@ export class EmployeeService {
       }
       try {
         const [result] = await this.pool.query<mysql.ResultSetHeader>(
-          `INSERT INTO employee (unique_id, first_name, last_name, staff_id, email, location, department, supervisor, program, country, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO employee (unique_id, designation, first_name, last_name, staff_id, email, location, department, supervisor, program, country, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             unique_id,
+            designation,
             first_name,
             last_name,
             staffId,
@@ -152,6 +155,7 @@ export class EmployeeService {
       locationId,
       supervisorId,
       departmentId,
+      designation,
       programId,
       page = 1,
       limit = 10,
@@ -212,6 +216,11 @@ export class EmployeeService {
     if (programId) {
       baseSql += ` AND p.unique_id = ?`;
       params.push(programId);
+    }
+
+    if (designation) {
+      baseSql += ` AND e.designation LIKE ?`;
+      params.push(`%${designation}%`);
     }
 
     // Get total count
