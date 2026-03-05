@@ -299,7 +299,7 @@ export class EmployeeService {
     }
   }
 
-  async update(id: number, updateEmployeeDto: UpdateEmployeeDto) {
+  async update(unique_id: string, updateEmployeeDto: UpdateEmployeeDto) {
     // Run independent existence checks in parallel
     const checks: Promise<void>[] = [];
 
@@ -384,11 +384,11 @@ export class EmployeeService {
       throw new BadRequestException('No fields provided for update');
     }
 
-    values.push(id);
+    values.push(unique_id);
 
     try {
       const [result] = await this.pool.query<mysql.ResultSetHeader>(
-        `UPDATE employees SET ${fields.join(', ')} WHERE id=?`,
+        `UPDATE employees SET ${fields.join(', ')} WHERE unique_id=?`,
         values,
       );
 
@@ -396,7 +396,7 @@ export class EmployeeService {
         throw new NotFoundException('Employee not found');
       }
 
-      return this.findOne(id);
+      return this.findByUniqueId(unique_id);
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
       if (error instanceof BadRequestException) throw error;
@@ -409,16 +409,16 @@ export class EmployeeService {
     }
   }
 
-  async remove(id: number) {
+  async remove(unique_id: string) {
     try {
-      await this.findOne(id); // ensure employee exists
+      await this.findByUniqueId(unique_id); // ensure employee exists
 
       await this.pool.query<mysql.ResultSetHeader>(
-        'DELETE FROM employee WHERE id = ?',
-        [id],
+        'DELETE FROM employee WHERE unique_id = ?',
+        [unique_id],
       );
 
-      return { message: `Employee with ID ${id} successfully deleted` };
+      return { message: `Employee with ID ${unique_id} successfully deleted` };
     } catch (error) {
       console.error('Delete employee error:', error);
       if (error instanceof NotFoundException) throw error;

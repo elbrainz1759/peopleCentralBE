@@ -44,17 +44,17 @@ export class EmployeeController {
     return this.employeeService.findByUniqueId(unique_id);
   }
 
-  @Patch(':id')
+  @Patch('unique/:unique_id')
   update(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('unique_id') unique_id: string,
     @Body() updateEmployeeDto: UpdateEmployeeDto,
   ) {
-    return this.employeeService.update(id, updateEmployeeDto);
+    return this.employeeService.update(unique_id, updateEmployeeDto);
   }
 
-  @Delete(':id')
+  @Delete('unique/:unique_id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.employeeService.remove(id);
+  remove(@Param('unique_id') unique_id: string) {
+    return this.employeeService.remove(unique_id);
   }
 }
