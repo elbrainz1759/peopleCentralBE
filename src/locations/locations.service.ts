@@ -17,6 +17,7 @@ export interface Location {
   id: number;
   unique_id: string;
   name: string;
+  country: string;
   created_by: string;
   created_at: Date;
 }
@@ -51,13 +52,24 @@ export class LocationsService {
         );
       }
 
+      // check country exists
+      const [country] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id FROM countries WHERE unique_id = ?',
+        [dto.countryId],
+      );
+      if (country.length === 0) {
+        throw new NotFoundException(
+          `Country with id "${dto.countryId}" not found`,
+        );
+      }
+
       const unique_id: string = randomBytes(16).toString('hex');
       const created_by: string = 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO locations (unique_id, name, created_by)
-         VALUES (?, ?, ?)`,
-        [unique_id, dto.name, created_by],
+        `INSERT INTO locations (unique_id, name, country, created_by)
+         VALUES (?, ?, ?, ?)`,
+        [unique_id, dto.name, dto.countryId, created_by],
       );
 
       return this.findOne(result.insertId);
@@ -94,7 +106,9 @@ export class LocationsService {
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT * FROM locations ${whereClause}
+        `SELECT a.*, b.name AS country FROM locations a
+         LEFT JOIN countries b ON a.country = b.unique_id
+         ${whereClause}
          ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
         [...params, limit, offset],
@@ -121,7 +135,7 @@ export class LocationsService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM locations WHERE id = ?',
+        'SELECT a.*, b.name AS country FROM locations a LEFT JOIN countries b ON a.country = b.unique_id WHERE a.id = ?',
         [id],
       );
       if (!rows.length)
@@ -140,7 +154,7 @@ export class LocationsService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM locations WHERE unique_id = ?',
+        'SELECT a.*, b.name AS country FROM locations a LEFT JOIN countries b ON a.country = b.unique_id WHERE a.unique_id = ?',
         [uniqueId],
       );
       if (!rows.length) {
