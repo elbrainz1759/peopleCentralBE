@@ -38,11 +38,11 @@ export class EmployeeService {
 
   async create(createEmployeeDto: CreateEmployeeDto) {
     const {
-      first_name,
-      last_name,
+      firstName,
+      lastName,
       staffId,
       email,
-      location,
+      locationId,
       departmentId,
       supervisor,
       programId,
@@ -111,7 +111,7 @@ export class EmployeeService {
         );
         if (locationRows.length === 0) {
           throw new NotFoundException(
-            `Location with unique_id ${location} not found`,
+            `Location with unique_id ${locationId} not found`,
           );
         }
       }
@@ -122,11 +122,11 @@ export class EmployeeService {
           [
             unique_id,
             designation,
-            first_name,
-            last_name,
+            firstName,
+            lastName,
             staffId,
             email,
-            location,
+            locationId,
             departmentId,
             supervisor,
             programId,
