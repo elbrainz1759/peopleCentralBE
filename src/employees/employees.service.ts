@@ -11,6 +11,7 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { randomBytes } from 'crypto';
 import { FindEmployeesDto } from './dto/find-employee.dto';
+import { ensureExists } from '../utils/check-exit.util';
 
 export interface EmployeeRow extends mysql.RowDataPacket {
   id: number;
@@ -299,30 +300,104 @@ export class EmployeeService {
   }
 
   async update(id: number, updateEmployeeDto: UpdateEmployeeDto) {
-    const fields = Object.keys(
-      updateEmployeeDto,
-    ) as (keyof UpdateEmployeeDto)[];
+    // Run independent existence checks in parallel
+    const checks: Promise<void>[] = [];
+
+    if (updateEmployeeDto.departmentId) {
+      checks.push(
+        ensureExists(
+          this.pool,
+          'departments',
+          updateEmployeeDto.departmentId,
+          'Department',
+        ),
+      );
+    }
+    if (updateEmployeeDto.programId) {
+      checks.push(
+        ensureExists(
+          this.pool,
+          'programs',
+          updateEmployeeDto.programId,
+          'Program',
+        ),
+      );
+    }
+    if (updateEmployeeDto.countryId) {
+      checks.push(
+        ensureExists(
+          this.pool,
+          'countries',
+          updateEmployeeDto.countryId,
+          'Country',
+        ),
+      );
+    }
+    if (updateEmployeeDto.locationId) {
+      checks.push(
+        ensureExists(
+          this.pool,
+          'locations',
+          updateEmployeeDto.locationId,
+          'Location',
+        ),
+      );
+    }
+    if (updateEmployeeDto.supervisorId) {
+      checks.push(
+        ensureExists(
+          this.pool,
+          'employee',
+          updateEmployeeDto.supervisorId,
+          'Supervisor',
+        ),
+      );
+    }
+
+    await Promise.all(checks);
+
+    // Build partial update dynamically
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    const fieldMap: Record<string, any> = {
+      designation: updateEmployeeDto.designation,
+      first_name: updateEmployeeDto.firstName,
+      last_name: updateEmployeeDto.lastName,
+      staff_id: updateEmployeeDto.staffId,
+      email: updateEmployeeDto.email,
+      location: updateEmployeeDto.locationId,
+      department: updateEmployeeDto.departmentId,
+      supervisor: updateEmployeeDto.supervisorId,
+      program: updateEmployeeDto.programId,
+      country: updateEmployeeDto.countryId,
+    };
+
+    for (const [col, val] of Object.entries(fieldMap)) {
+      if (val !== undefined) {
+        fields.push(`${col}=?`);
+        values.push(val);
+      }
+    }
 
     if (fields.length === 0) {
       throw new BadRequestException('No fields provided for update');
     }
 
+    values.push(id);
+
     try {
-      await this.findOne(id);
-
-      const setClause = fields.map((field) => `${field} = ?`).join(', ');
-      const values: (string | number)[] = fields.map(
-        (field) => updateEmployeeDto[field] as string | number,
+      const [result] = await this.pool.query<mysql.ResultSetHeader>(
+        `UPDATE employees SET ${fields.join(', ')} WHERE id=?`,
+        values,
       );
 
-      await this.pool.query<mysql.ResultSetHeader>(
-        `UPDATE employee SET ${setClause} WHERE id = ?`,
-        [...values, id],
-      );
+      if (result.affectedRows === 0) {
+        throw new NotFoundException('Employee not found');
+      }
 
       return this.findOne(id);
     } catch (error) {
-      console.error('Update employee error:', error);
       if (error instanceof NotFoundException) throw error;
       if (error instanceof BadRequestException) throw error;
       if ((error as NodeJS.ErrnoException).code === 'ER_DUP_ENTRY') {
