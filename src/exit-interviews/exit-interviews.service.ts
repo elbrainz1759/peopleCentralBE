@@ -15,8 +15,11 @@ export interface ExitInterview {
   id: number;
   unique_id: string;
   staff_id: number;
-  department_id: string;
-  supervisor_id: string;
+  department_id: number;
+  supervisor_id: number;
+  program_id: number;
+  country_id: number;
+  location_id: number;
   resignation_date: string;
   reason_for_leaving: string;
   other_reason: string;
@@ -33,6 +36,15 @@ export interface ExitInterview {
   created_by: string;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface ExitInterviewDetail extends ExitInterview {
+  staff_first_name: string;
+  staff_last_name: string;
+  department_name: string;
+  location_name: string;
+  country_name: string;
+  program_name: string;
 }
 
 export interface PaginatedResult<T> {
@@ -138,10 +150,9 @@ export class ExitInterviewService {
     }
   }
 
-  // GET /exit-interviews
   async findAll(
     query: PaginationQueryDto,
-  ): Promise<PaginatedResult<ExitInterview>> {
+  ): Promise<PaginatedResult<ExitInterviewDetail>> {
     const conn = await this.pool.getConnection();
     try {
       const page = query.page ?? 1;
@@ -151,29 +162,56 @@ export class ExitInterviewService {
       const params: (string | number)[] = [];
       let whereClause = '';
 
+      const joins = `
+        LEFT JOIN employee e    ON e.id = ei.staff_id
+        LEFT JOIN departments d ON d.id = ei.department_id
+        LEFT JOIN locations l   ON l.id = ei.location_id
+        LEFT JOIN countries c   ON c.id = ei.country_id
+        LEFT JOIN programs p    ON p.id = ei.program_id
+      `;
+
       if (query.search) {
-        whereClause =
-          'WHERE unique_id LIKE ? OR reason_for_leaving LIKE ? OR stage LIKE ? OR status LIKE ?';
+        whereClause = `WHERE (
+          ei.unique_id LIKE ?          OR
+          ei.reason_for_leaving LIKE ? OR
+          ei.stage LIKE ?              OR
+          ei.status LIKE ?             OR
+          e.first_name LIKE ?          OR
+          e.last_name LIKE ?
+        )`;
         const term = `%${query.search}%`;
-        params.push(term, term, term, term);
+        params.push(term, term, term, term, term, term);
       }
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM exit_interviews ${whereClause}`,
+        `SELECT COUNT(*) AS total
+         FROM exit_interviews ei
+         ${joins}
+         ${whereClause}`,
         params,
       );
 
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT * FROM exit_interviews ${whereClause}
-           ORDER BY created_at DESC
-           LIMIT ? OFFSET ?`,
+        `SELECT
+           ei.*,
+           e.first_name AS staff_first_name,
+           e.last_name  AS staff_last_name,
+           d.name       AS department_name,
+           l.name       AS location_name,
+           c.name       AS country_name,
+           p.name       AS program_name
+         FROM exit_interviews ei
+         ${joins}
+         ${whereClause}
+         ORDER BY ei.created_at DESC
+         LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
 
       return {
-        data: rows as ExitInterview[],
+        data: rows as ExitInterviewDetail[],
         meta: {
           total,
           page,
@@ -189,16 +227,30 @@ export class ExitInterviewService {
   }
 
   // GET /exit-interviews/:id
-  async findOne(id: number): Promise<ExitInterview> {
+  async findOne(id: number): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM exit_interviews WHERE id = ?',
+        `SELECT
+           ei.*,
+           e.first_name AS staff_first_name,
+           e.last_name  AS staff_last_name,
+           d.name       AS department_name,
+           l.name       AS location_name,
+           c.name       AS country_name,
+           p.name       AS program_name
+         FROM exit_interviews ei
+         LEFT JOIN employee e    ON e.id = ei.staff_id
+         LEFT JOIN departments d ON d.id = ei.department_id
+         LEFT JOIN locations l   ON l.id = ei.location_id
+         LEFT JOIN countries c   ON c.id = ei.country_id
+         LEFT JOIN programs p    ON p.id = ei.program_id
+         WHERE ei.id = ?`,
         [id],
       );
       if (!rows.length)
         throw new NotFoundException(`Exit interview with id ${id} not found`);
-      return rows[0] as ExitInterview;
+      return rows[0] as ExitInterviewDetail;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
@@ -208,18 +260,32 @@ export class ExitInterviewService {
   }
 
   // GET /exit-interviews/unique/:uniqueId
-  async findByUniqueId(uniqueId: string): Promise<ExitInterview> {
+  async findByUniqueId(uniqueId: string): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM exit_interviews WHERE unique_id = ?',
+        `SELECT
+           ei.*,
+           e.first_name AS staff_first_name,
+           e.last_name  AS staff_last_name,
+           d.name       AS department_name,
+           l.name       AS location_name,
+           c.name       AS country_name,
+           p.name       AS program_name
+         FROM exit_interviews ei
+         LEFT JOIN employee e    ON e.id = ei.staff_id
+         LEFT JOIN departments d ON d.id = ei.department_id
+         LEFT JOIN locations l   ON l.id = ei.location_id
+         LEFT JOIN countries c   ON c.id = ei.country_id
+         LEFT JOIN programs p    ON p.id = ei.program_id
+         WHERE ei.unique_id = ?`,
         [uniqueId],
       );
       if (!rows.length)
         throw new NotFoundException(
           `Exit interview with unique_id "${uniqueId}" not found`,
         );
-      return rows[0] as ExitInterview;
+      return rows[0] as ExitInterviewDetail;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
@@ -229,21 +295,35 @@ export class ExitInterviewService {
   }
 
   // GET /exit-interviews/staff/:staffId
-  async findByStaffId(staffId: number): Promise<ExitInterview[]> {
+  async findByStaffId(staffId: number): Promise<ExitInterviewDetail[]> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM exit_interviews WHERE staff_id = ? ORDER BY created_at DESC',
+        `SELECT
+           ei.*,
+           e.first_name AS staff_first_name,
+           e.last_name  AS staff_last_name,
+           d.name       AS department_name,
+           l.name       AS location_name,
+           c.name       AS country_name,
+           p.name       AS program_name
+         FROM exit_interviews ei
+         LEFT JOIN employee e    ON e.id = ei.staff_id
+         LEFT JOIN departments d ON d.id = ei.department_id
+         LEFT JOIN locations l   ON l.id = ei.location_id
+         LEFT JOIN countries c   ON c.id = ei.country_id
+         LEFT JOIN programs p    ON p.id = ei.program_id
+         WHERE ei.staff_id = ?
+         ORDER BY ei.created_at DESC`,
         [staffId],
       );
-      return rows as ExitInterview[];
+      return rows as ExitInterviewDetail[];
     } catch (err) {
       throw new InternalServerErrorException(err);
     } finally {
       conn.release();
     }
   }
-
   // PATCH /exit-interviews/:id
   async update(
     id: number,

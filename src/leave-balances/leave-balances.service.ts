@@ -170,10 +170,13 @@ export class LeaveBalancesService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT lb.*, lt.name AS leave_type_name, e.first_name, e.last_name, e.designation
+        `SELECT lb.*, lt.name AS leave_type_name, e.first_name, e.last_name, e.designation, e.location, e.program, l.name AS location_name, d.name AS department_name, p.name AS program_name
          FROM leave_balances lb
          LEFT JOIN leave_types lt ON lt.id = lb.leave_type_id
           LEFT JOIN employee e ON e.staff_id = lb.staff_id
+          LEFT JOIN locations l ON l.unique_id = e.location
+          LEFT JOIN departments d ON d.unique_id = e.department
+          LEFT JOIN programs p ON p.unique_id = e.program
          WHERE lb.staff_id = ?
          ORDER BY lt.name ASC`,
         [staffId],

@@ -231,3 +231,10 @@ CREATE TABLE IF NOT EXISTS exit_interviews (
   created_at         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+ALTER TABLE `exit_interviews` ADD COLUMN `program` VARCHAR(255) NOT NULL;
+ALTER TABLE `exit_interviews` ADD COLUMN `country` VARCHAR(255) NOT NULL;
+ALTER TABLE `exit_interviews` ADD COLUMN `location` VARCHAR(255) NOT NULL;
+ALTER TABLE `exit_interviews` ADD COLUMN `department` VARCHAR(255) NOT NULL;
+
+
