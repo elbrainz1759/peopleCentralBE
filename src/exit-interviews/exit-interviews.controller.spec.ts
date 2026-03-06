@@ -1,15 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { ExitInterviewsController } from './exit-interviews.controller';
+import { ExitInterviewController } from './exit-interviews.controller';
 
 describe('ExitInterviewsController', () => {
-  let controller: ExitInterviewsController;
+  let controller: ExitInterviewController;
+  const mockService = {} as never;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [ExitInterviewsController],
-    }).compile();
-
-    controller = module.get<ExitInterviewsController>(ExitInterviewsController);
+  beforeEach(() => {
+    controller = new ExitInterviewController(mockService);
   });
 
   it('should be defined', () => {

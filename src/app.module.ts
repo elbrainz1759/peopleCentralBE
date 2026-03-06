@@ -19,7 +19,7 @@ import { LeavesModule } from './leaves/leaves.module';
 import { LeaveBalancesController } from './leave-balances/leave-balances.controller';
 import { LeaveBalancesModule } from './leave-balances/leave-balances.module';
 import { CheckListItemsModule } from './check-list-items/check-list-items.module';
-import { ExitInterviewsModule } from './exit-interviews/exit-interviews.module';
+import { ExitInterviewModule } from './exit-interviews/exit-interviews.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -36,7 +36,7 @@ import { ExitInterviewsModule } from './exit-interviews/exit-interviews.module';
     LeavesModule,
     LeaveBalancesModule,
     CheckListItemsModule,
-    ExitInterviewsModule,
+    ExitInterviewModule,
   ],
   controllers: [AppController, LeaveBalancesController],
   providers: [

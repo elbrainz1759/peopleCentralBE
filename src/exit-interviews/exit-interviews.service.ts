@@ -10,8 +10,6 @@ import { CreateExitInterviewDto } from './dto/create-exit-interview.dto';
 import { UpdateExitInterviewDto } from './dto/update-exit-interview.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 
-// ─── Interfaces ────────────────────────────────────────────────────────────────
-
 export interface ExitInterview {
   id: number;
   unique_id: string;
@@ -31,7 +29,6 @@ export interface ExitInterview {
   would_recommend: string;
   stage: string;
   status: string;
-  signature: boolean;
   created_by: string;
   created_at: Date;
   updated_at: Date;
@@ -46,8 +43,6 @@ export interface PaginatedResult<T> {
     last_page: number;
   };
 }
-
-// ─── Service ───────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class ExitInterviewService {
@@ -66,8 +61,8 @@ export class ExitInterviewService {
             resignation_date, reason_for_leaving, other_reason,
             most_enjoyed, company_improvement, handover_notes, new_employer,
             rating_culture, rating_job, rating_manager, would_recommend,
-            stage, status, signature, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            stage, status, created_by
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           unique_id,
           dto.staffId,
@@ -86,7 +81,6 @@ export class ExitInterviewService {
           dto.wouldRecommend,
           dto.stage ?? 'Employee',
           dto.status ?? 'Pending',
-          dto.signature ? 1 : 0,
           created_by,
         ],
       );
@@ -237,7 +231,6 @@ export class ExitInterviewService {
         wouldRecommend: 'would_recommend',
         stage: 'stage',
         status: 'status',
-        signature: 'signature',
       };
 
       const fields = (
@@ -248,10 +241,7 @@ export class ExitInterviewService {
       const setClauses = fields
         .map((f) => `${columnMap[f] ?? f} = ?`)
         .join(', ');
-      const values = fields.map((f) => {
-        const val = dto[f];
-        return f === 'signature' ? (val ? 1 : 0) : val;
-      });
+      const values = fields.map((f) => dto[f]);
 
       await conn.execute(
         `UPDATE exit_interviews SET ${setClauses} WHERE id = ?`,

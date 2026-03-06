@@ -63,7 +63,7 @@ export class CreateExitInterviewDto {
   wouldRecommend: string;
 
   @IsOptional()
-  @IsIn(['Employee', 'Supervisor', 'HR'])
+  @IsIn(['Employee', 'Supervisor', 'HR', 'Operations', 'Finance'])
   stage?: string;
 
   @IsOptional()
