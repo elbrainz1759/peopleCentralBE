@@ -20,6 +20,7 @@ import { LeaveBalancesController } from './leave-balances/leave-balances.control
 import { LeaveBalancesModule } from './leave-balances/leave-balances.module';
 import { CheckListItemsModule } from './check-list-items/check-list-items.module';
 import { ExitInterviewModule } from './exit-interviews/exit-interviews.module';
+import { DataTrackerModule } from './data-tracker/data-tracker.module';
 @Module({
   imports: [
     DatabaseModule,
@@ -37,6 +38,7 @@ import { ExitInterviewModule } from './exit-interviews/exit-interviews.module';
     LeaveBalancesModule,
     CheckListItemsModule,
     ExitInterviewModule,
+    DataTrackerModule,
   ],
   controllers: [AppController, LeaveBalancesController],
   providers: [
