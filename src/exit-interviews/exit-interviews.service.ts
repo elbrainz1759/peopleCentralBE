@@ -9,13 +9,14 @@ import { randomBytes } from 'crypto';
 import { CreateExitInterviewDto } from './dto/create-exit-interview.dto';
 import { UpdateExitInterviewDto } from './dto/update-exit-interview.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { ensureExists } from '../utils/check-exit.util';
 
 export interface ExitInterview {
   id: number;
   unique_id: string;
   staff_id: number;
-  department_id: number;
-  supervisor_id: number;
+  department_id: string;
+  supervisor_id: string;
   resignation_date: string;
   reason_for_leaving: string;
   other_reason: string;
@@ -54,20 +55,63 @@ export class ExitInterviewService {
     try {
       const unique_id = randomBytes(16).toString('hex');
       const created_by = 'System';
+      const checks: Promise<void>[] = [];
+
+      if (dto.departmentId) {
+        checks.push(
+          ensureExists(
+            this.pool,
+            'departments',
+            dto.departmentId,
+            'Department',
+          ),
+        );
+      }
+      if (dto.programId) {
+        checks.push(
+          ensureExists(this.pool, 'programs', dto.programId, 'Program'),
+        );
+      }
+      if (dto.countryId) {
+        checks.push(
+          ensureExists(this.pool, 'countries', dto.countryId, 'Country'),
+        );
+      }
+      if (dto.locationId) {
+        checks.push(
+          ensureExists(this.pool, 'locations', dto.locationId, 'Location'),
+        );
+      }
+
+      //check if supervisor exists
+      const [supervisor] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id FROM employee WHERE unique_id = ?',
+        [dto.supervisorId],
+      );
+      if (!supervisor.length) {
+        throw new NotFoundException(
+          `Supervisor with id ${dto.supervisorId} not found`,
+        );
+      }
+
+      await Promise.all(checks);
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO exit_interviews (
-            unique_id, staff_id, department_id, supervisor_id,
-            resignation_date, reason_for_leaving, other_reason,
-            most_enjoyed, company_improvement, handover_notes, new_employer,
-            rating_culture, rating_job, rating_manager, would_recommend,
-            stage, status, created_by
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          unique_id, staff_id, department_id, supervisor_id, program_id, country_id, location_id,
+          resignation_date, reason_for_leaving, other_reason,
+          most_enjoyed, company_improvement, handover_notes, new_employer,
+          rating_culture, rating_job, rating_manager, would_recommend,
+          stage, status, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           unique_id,
           dto.staffId,
           dto.departmentId,
           dto.supervisorId,
+          dto.programId,
+          dto.countryId,
+          dto.locationId,
           dto.resignationDate,
           dto.reasonForLeaving,
           dto.otherReason ?? '',
@@ -79,7 +123,7 @@ export class ExitInterviewService {
           dto.ratingJob,
           dto.ratingManager,
           dto.wouldRecommend,
-          dto.stage ?? 'Employee',
+          dto.stage ?? 'HR',
           dto.status ?? 'Pending',
           created_by,
         ],
@@ -87,6 +131,7 @@ export class ExitInterviewService {
 
       return this.findOne(result.insertId);
     } catch (err) {
+      console.error('Create exit interview error:', err);
       throw new InternalServerErrorException(err);
     } finally {
       conn.release();

@@ -6,41 +6,59 @@ import {
   IsIn,
   Min,
   Max,
+  IsNotEmpty,
 } from 'class-validator';
 
 export class CreateExitInterviewDto {
   @IsInt()
+  @IsNotEmpty()
   staffId: number;
 
-  @IsInt()
-  departmentId: number;
+  @IsString()
+  @IsNotEmpty()
+  departmentId: string;
 
   @IsInt()
+  @IsNotEmpty()
   supervisorId: number;
 
   @IsDateString()
+  @IsNotEmpty()
   resignationDate: string;
 
   @IsString()
+  @IsNotEmpty()
   reasonForLeaving: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
   otherReason?: string;
 
-  @IsOptional()
+  @IsNotEmpty()
+  @IsString()
+  programId?: string;
+
+  @IsNotEmpty()
+  @IsString()
+  countryId?: string;
+
+  @IsNotEmpty()
+  @IsString()
+  locationId?: string;
+
+  @IsNotEmpty()
   @IsString()
   mostEnjoyed?: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
   companyImprovement?: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
   handoverNotes?: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
   newEmployer?: string;
 
