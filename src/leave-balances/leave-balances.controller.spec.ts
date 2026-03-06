@@ -1,15 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { LeaveBalancesController } from './leave-balances.controller';
 
 describe('LeaveBalancesController', () => {
   let controller: LeaveBalancesController;
+  const mockService: any = {};
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [LeaveBalancesController],
-    }).compile();
-
-    controller = module.get<LeaveBalancesController>(LeaveBalancesController);
+  beforeEach(() => {
+    controller = new LeaveBalancesController(mockService);
   });
 
   it('should be defined', () => {

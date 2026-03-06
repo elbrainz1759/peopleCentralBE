@@ -206,3 +206,28 @@ CREATE TABLE check_list_items (
 ) ENGINE=InnoDB 
 DEFAULT CHARSET=utf8mb4 
 COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE IF NOT EXISTS exit_interviews (
+  id                 INT AUTO_INCREMENT PRIMARY KEY,
+  unique_id          VARCHAR(32)   NOT NULL UNIQUE,
+  staff_id           INT           NOT NULL,
+  department_id      INT           NOT NULL,
+  supervisor_id      INT           NOT NULL,
+  resignation_date   DATE          NOT NULL,
+  reason_for_leaving VARCHAR(100)  NOT NULL,
+  other_reason       VARCHAR(255)           DEFAULT '',
+  most_enjoyed       TEXT,
+  company_improvement TEXT,
+  handover_notes     TEXT,
+  new_employer       VARCHAR(255),
+  rating_culture     TINYINT       NOT NULL COMMENT '1-5',
+  rating_job         TINYINT       NOT NULL COMMENT '1-5',
+  rating_manager     TINYINT       NOT NULL COMMENT '1-5',
+  would_recommend    VARCHAR(10)   NOT NULL COMMENT 'Yes | No | Maybe',
+  stage              VARCHAR(50)   NOT NULL DEFAULT 'Employee' COMMENT 'Employee | Supervisor | HR',
+  status             VARCHAR(20)   NOT NULL DEFAULT 'Pending' COMMENT 'Pending | Approved | Rejected',
+  created_by         VARCHAR(100)  NOT NULL DEFAULT 'System',
+  created_at         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

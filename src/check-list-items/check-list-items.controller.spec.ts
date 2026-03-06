@@ -1,15 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { CheckListItemsController } from './check-list-items.controller';
 
 describe('CheckListItemsController', () => {
   let controller: CheckListItemsController;
+  const mockService: any = {};
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [CheckListItemsController],
-    }).compile();
-
-    controller = module.get<CheckListItemsController>(CheckListItemsController);
+  beforeEach(() => {
+    controller = new CheckListItemsController(mockService);
   });
 
   it('should be defined', () => {

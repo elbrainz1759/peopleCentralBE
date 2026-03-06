@@ -1,18 +1,19 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { DepartmentsController } from './departments.controller';
 
 describe('DepartmentsController', () => {
   let controller: DepartmentsController;
+  const mockService: any = { findAll: jest.fn() };
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [DepartmentsController],
-    }).compile();
-
-    controller = module.get<DepartmentsController>(DepartmentsController);
+  beforeEach(() => {
+    controller = new DepartmentsController(mockService as any);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('delegates findAll', async () => {
+    mockService.findAll.mockResolvedValue('ok');
+    expect(await controller.findAll({} as any)).toBe('ok');
   });
 });
