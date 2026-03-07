@@ -115,7 +115,7 @@ export class ExitInterviewService {
           most_enjoyed, company_improvement, handover_notes, new_employer,
           rating_culture, rating_job, rating_manager, would_recommend,
           stage, status, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           unique_id,
           dto.staffId,
