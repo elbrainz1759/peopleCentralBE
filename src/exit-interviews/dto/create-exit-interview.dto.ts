@@ -20,7 +20,7 @@ export class CreateExitInterviewDto {
 
   @IsInt()
   @IsNotEmpty()
-  supervisorId: number;
+  supervisorId: string;
 
   @IsDateString()
   @IsNotEmpty()
