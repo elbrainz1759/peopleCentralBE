@@ -18,7 +18,7 @@ export class CreateExitInterviewDto {
   @IsNotEmpty()
   departmentId: string;
 
-  @IsInt()
+  @IsString()
   @IsNotEmpty()
   supervisorId: string;
 
