@@ -212,7 +212,6 @@ CREATE TABLE IF NOT EXISTS exit_interviews (
   id                 INT AUTO_INCREMENT PRIMARY KEY,
   unique_id          VARCHAR(32)   NOT NULL UNIQUE,
   staff_id           INT           NOT NULL,
-  department_id      INT           NOT NULL,
   supervisor_id      INT           NOT NULL,
   resignation_date   DATE          NOT NULL,
   reason_for_leaving VARCHAR(100)  NOT NULL,
@@ -232,9 +231,9 @@ CREATE TABLE IF NOT EXISTS exit_interviews (
   updated_at         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
-ALTER TABLE `exit_interviews` ADD COLUMN `program` VARCHAR(255) NOT NULL;
-ALTER TABLE `exit_interviews` ADD COLUMN `country` VARCHAR(255) NOT NULL;
-ALTER TABLE `exit_interviews` ADD COLUMN `location` VARCHAR(255) NOT NULL;
-ALTER TABLE `exit_interviews` ADD COLUMN `department` VARCHAR(255) NOT NULL;
+ALTER TABLE `exit_interviews` ADD COLUMN `program_id` VARCHAR(255) NOT NULL;
+ALTER TABLE `exit_interviews` ADD COLUMN `country_id` VARCHAR(255) NOT NULL;
+ALTER TABLE `exit_interviews` ADD COLUMN `location_id` VARCHAR(255) NOT NULL;
+ALTER TABLE `exit_interviews` ADD COLUMN `department_id` VARCHAR(255) NOT NULL;
 
 
