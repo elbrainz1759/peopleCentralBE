@@ -32,35 +32,35 @@ export class CreateExitInterviewDto {
 
   @IsNotEmpty()
   @IsString()
-  otherReason?: string;
+  otherReason: string;
 
   @IsNotEmpty()
   @IsString()
-  programId?: string;
+  programId: string;
 
   @IsNotEmpty()
   @IsString()
-  countryId?: string;
+  countryId: string;
 
   @IsNotEmpty()
   @IsString()
-  locationId?: string;
+  locationId: string;
 
   @IsNotEmpty()
   @IsString()
-  mostEnjoyed?: string;
+  mostEnjoyed: string;
 
   @IsNotEmpty()
   @IsString()
-  companyImprovement?: string;
+  companyImprovement: string;
 
   @IsNotEmpty()
   @IsString()
-  handoverNotes?: string;
+  handoverNotes: string;
 
   @IsNotEmpty()
   @IsString()
-  newEmployer?: string;
+  newEmployer: string;
 
   @IsInt()
   @Min(1)
@@ -82,9 +82,9 @@ export class CreateExitInterviewDto {
 
   @IsOptional()
   @IsIn(['Employee', 'Supervisor', 'HR', 'Operations', 'Finance'])
-  stage?: string;
+  stage: string;
 
   @IsOptional()
   @IsIn(['Pending', 'Approved', 'Rejected'])
-  status?: string;
+  status: string;
 }
