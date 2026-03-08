@@ -24,6 +24,12 @@ import { ClearDepartmentDto } from './dto/clear-department.dto';
 export class ExitInterviewController {
   constructor(private readonly exitInterviewService: ExitInterviewService) {}
 
+  // GET /exit-interviews/dashboard
+  @Get('dashboard')
+  getDashboard(): Promise<Record<string, any>> {
+    return this.exitInterviewService.getDashboard();
+  }
+
   // POST /exit-interviews
   @Post()
   create(@Body() dto: CreateExitInterviewDto): Promise<ExitInterviewDetail> {

@@ -626,4 +626,103 @@ export class ExitInterviewService {
       conn.release();
     }
   }
+
+  // GET /exit-interviews/dashboard
+  async getDashboard(): Promise<Record<string, any>> {
+    const conn = await this.pool.getConnection();
+    try {
+      // ── Total ────────────────────────────────────────────────────────────────
+      const [[totalRow]] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT COUNT(*) AS total FROM exit_interviews',
+      );
+
+      // ── By Stage ─────────────────────────────────────────────────────────────
+      const [byStage] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT stage, COUNT(*) AS count
+         FROM exit_interviews
+         GROUP BY stage
+         ORDER BY count DESC`,
+      );
+
+      // ── By Status ────────────────────────────────────────────────────────────
+      const [byStatus] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT status, COUNT(*) AS count
+         FROM exit_interviews
+         GROUP BY status
+         ORDER BY count DESC`,
+      );
+
+      // ── By Department ────────────────────────────────────────────────────────
+      const [byDepartment] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT d.name AS department, COUNT(*) AS count
+         FROM exit_interviews ei
+         LEFT JOIN departments d ON d.unique_id = ei.department_id
+         GROUP BY ei.department_id, d.name
+         ORDER BY count DESC`,
+      );
+
+      // ── By Location ──────────────────────────────────────────────────────────
+      const [byLocation] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT l.name AS location, COUNT(*) AS count
+         FROM exit_interviews ei
+         LEFT JOIN locations l ON l.unique_id = ei.location_id
+         GROUP BY ei.location_id, l.name
+         ORDER BY count DESC`,
+      );
+
+      // ── By Country ───────────────────────────────────────────────────────────
+      const [byCountry] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT c.name AS country, COUNT(*) AS count
+         FROM exit_interviews ei
+         LEFT JOIN countries c ON c.unique_id = ei.country_id
+         GROUP BY ei.country_id, c.name
+         ORDER BY count DESC`,
+      );
+
+      // ── Would Recommend ──────────────────────────────────────────────────────
+      const [wouldRecommend] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT would_recommend, COUNT(*) AS count
+         FROM exit_interviews
+         GROUP BY would_recommend
+         ORDER BY count DESC`,
+      );
+
+      // ── Monthly Trend (last 12 months) ───────────────────────────────────────
+      const [monthlyTrend] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT
+           DATE_FORMAT(created_at, '%Y-%m') AS month,
+           COUNT(*) AS count
+         FROM exit_interviews
+         WHERE created_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+         GROUP BY month
+         ORDER BY month ASC`,
+      );
+
+      // ── Yearly Trend ─────────────────────────────────────────────────────────
+      const [yearlyTrend] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT
+           YEAR(created_at) AS year,
+           COUNT(*) AS count
+         FROM exit_interviews
+         GROUP BY year
+         ORDER BY year ASC`,
+      );
+
+      return {
+        total: totalRow['total'] as number,
+        by_stage: byStage,
+        by_status: byStatus,
+        by_department: byDepartment,
+        by_location: byLocation,
+        by_country: byCountry,
+        would_recommend: wouldRecommend,
+        monthly_trend: monthlyTrend,
+        yearly_trend: yearlyTrend,
+      };
+    } catch (err) {
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
 }
