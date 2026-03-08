@@ -11,12 +11,14 @@ import {
 } from '@nestjs/common';
 import {
   ExitInterviewService,
-  ExitInterview,
+  ExitInterviewDetail,
+  ClearanceStatusResult,
   PaginatedResult,
 } from './exit-interviews.service';
 import { CreateExitInterviewDto } from './dto/create-exit-interview.dto';
 import { UpdateExitInterviewDto } from './dto/update-exit-interview.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { ClearDepartmentDto } from './dto/clear-department.dto';
 
 @Controller('exit-interviews')
 export class ExitInterviewController {
@@ -24,7 +26,7 @@ export class ExitInterviewController {
 
   // POST /exit-interviews
   @Post()
-  create(@Body() dto: CreateExitInterviewDto): Promise<ExitInterview> {
+  create(@Body() dto: CreateExitInterviewDto): Promise<ExitInterviewDetail> {
     return this.exitInterviewService.create(dto);
   }
 
@@ -32,13 +34,23 @@ export class ExitInterviewController {
   @Get()
   findAll(
     @Query() query: PaginationQueryDto,
-  ): Promise<PaginatedResult<ExitInterview>> {
+  ): Promise<PaginatedResult<ExitInterviewDetail>> {
     return this.exitInterviewService.findAll(query);
+  }
+
+  // GET /exit-interviews/pending/:department  — Operations | Finance queue
+  @Get('pending/:department')
+  findPendingByDepartment(
+    @Param('department') department: string,
+  ): Promise<PaginatedResult<ExitInterviewDetail>> {
+    return this.exitInterviewService.findPendingByDepartment(department);
   }
 
   // GET /exit-interviews/unique/:uniqueId
   @Get('unique/:uniqueId')
-  findByUniqueId(@Param('uniqueId') uniqueId: string): Promise<ExitInterview> {
+  findByUniqueId(
+    @Param('uniqueId') uniqueId: string,
+  ): Promise<ExitInterviewDetail> {
     return this.exitInterviewService.findByUniqueId(uniqueId);
   }
 
@@ -46,14 +58,52 @@ export class ExitInterviewController {
   @Get('staff/:staffId')
   findByStaffId(
     @Param('staffId', ParseIntPipe) staffId: number,
-  ): Promise<ExitInterview[]> {
+  ): Promise<ExitInterviewDetail[]> {
     return this.exitInterviewService.findByStaffId(staffId);
+  }
+
+  // GET /exit-interviews/supervisor/:supervisorId
+  @Get('supervisor/:supervisorId')
+  findBySupervisorId(
+    @Param('supervisorId') supervisorId: string,
+  ): Promise<ExitInterviewDetail[]> {
+    return this.exitInterviewService.findBySupervisorId(supervisorId);
+  }
+
+  // GET /exit-interviews/:id/clearance-status
+  @Get(':id/clearance-status')
+  getClearanceStatus(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ClearanceStatusResult> {
+    return this.exitInterviewService.getClearanceStatus(id);
   }
 
   // GET /exit-interviews/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number): Promise<ExitInterview> {
+  findOne(@Param('id', ParseIntPipe) id: number): Promise<ExitInterviewDetail> {
     return this.exitInterviewService.findOne(id);
+  }
+
+  // POST /exit-interviews/:id/clear
+  @Post(':id/clear')
+  clearDepartment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ClearDepartmentDto,
+  ): Promise<ClearanceStatusResult> {
+    return this.exitInterviewService.clearDepartment(
+      id,
+      dto.department,
+      dto.checkListItemIds,
+      dto.notes,
+    );
+  }
+
+  // PATCH /exit-interviews/:id/finalize  (HR final submission)
+  @Patch(':id/finalize')
+  finalize(
+    @Param('id', ParseIntPipe) id: string,
+  ): Promise<ExitInterviewDetail> {
+    return this.exitInterviewService.finalize(id);
   }
 
   // PATCH /exit-interviews/:id
@@ -61,13 +111,13 @@ export class ExitInterviewController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateExitInterviewDto,
-  ): Promise<ExitInterview> {
+  ): Promise<ExitInterviewDetail> {
     return this.exitInterviewService.update(id, dto);
   }
 
   // DELETE /exit-interviews/:id
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number): Promise<{ message: string }> {
+  remove(@Param('id', ParseIntPipe) id: string): Promise<{ message: string }> {
     return this.exitInterviewService.remove(id);
   }
 }

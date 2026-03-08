@@ -11,15 +11,17 @@ import { UpdateExitInterviewDto } from './dto/update-exit-interview.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { ensureExists } from '../utils/check-exit.util';
 
+// ─── Interfaces ────────────────────────────────────────────────────────────────
+
 export interface ExitInterview {
   id: number;
   unique_id: string;
   staff_id: number;
-  department_id: number;
-  supervisor_id: number;
-  program_id: number;
-  country_id: number;
-  location_id: number;
+  department_id: string;
+  supervisor_id: string;
+  program_id: string;
+  country_id: string;
+  location_id: string;
   resignation_date: string;
   reason_for_leaving: string;
   other_reason: string;
@@ -33,6 +35,8 @@ export interface ExitInterview {
   would_recommend: string;
   stage: string;
   status: string;
+  operations_cleared: boolean;
+  finance_cleared: boolean;
   created_by: string;
   created_at: Date;
   updated_at: Date;
@@ -47,6 +51,26 @@ export interface ExitInterviewDetail extends ExitInterview {
   program_name: string;
 }
 
+export interface Clearance {
+  id: number;
+  unique_id: string;
+  exit_interview_id: number;
+  check_list_item_id: number;
+  department: string;
+  cleared_by: string;
+  cleared_at: Date;
+  notes: string;
+  item_name: string;
+}
+
+export interface ClearanceStatusResult {
+  exit_interview_id: number;
+  operations_cleared: boolean;
+  finance_cleared: boolean;
+  hr_can_finalize: boolean;
+  clearances: Clearance[];
+}
+
 export interface PaginatedResult<T> {
   data: T[];
   meta: {
@@ -57,12 +81,34 @@ export interface PaginatedResult<T> {
   };
 }
 
+// ─── Shared SQL fragments ──────────────────────────────────────────────────────
+
+const DETAIL_SELECT = `
+  ei.*,
+  e.first_name AS staff_first_name,
+  e.last_name  AS staff_last_name,
+  d.name       AS department_name,
+  l.name       AS location_name,
+  c.name       AS country_name,
+  p.name       AS program_name
+`;
+
+const DETAIL_JOINS = `
+  LEFT JOIN employee e    ON e.unique_id = ei.staff_id
+  LEFT JOIN departments d ON d.unique_id = ei.department_id
+  LEFT JOIN locations l   ON l.unique_id = ei.location_id
+  LEFT JOIN countries c   ON c.unique_id = ei.country_id
+  LEFT JOIN programs p    ON p.unique_id = ei.program_id
+`;
+
+// ─── Service ───────────────────────────────────────────────────────────────────
+
 @Injectable()
 export class ExitInterviewService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /exit-interviews
-  async create(dto: CreateExitInterviewDto): Promise<ExitInterview> {
+  async create(dto: CreateExitInterviewDto): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
     try {
       const unique_id = randomBytes(16).toString('hex');
@@ -95,7 +141,7 @@ export class ExitInterviewService {
         );
       }
 
-      //check if supervisor exists
+      // Check supervisor exists by unique_id
       const [supervisor] = await conn.query<mysql.RowDataPacket[]>(
         'SELECT id FROM employee WHERE unique_id = ?',
         [dto.supervisorId],
@@ -144,12 +190,14 @@ export class ExitInterviewService {
       return this.findOne(result.insertId);
     } catch (err) {
       console.error('Create exit interview error:', err);
+      if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
     } finally {
       conn.release();
     }
   }
 
+  // GET /exit-interviews
   async findAll(
     query: PaginationQueryDto,
   ): Promise<PaginatedResult<ExitInterviewDetail>> {
@@ -160,33 +208,43 @@ export class ExitInterviewService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = '';
-
-      const joins = `
-        LEFT JOIN employee e    ON e.id = ei.staff_id
-        LEFT JOIN departments d ON d.id = ei.department_id
-        LEFT JOIN locations l   ON l.id = ei.location_id
-        LEFT JOIN countries c   ON c.id = ei.country_id
-        LEFT JOIN programs p    ON p.id = ei.program_id
-      `;
+      const conditions: string[] = [];
 
       if (query.search) {
-        whereClause = `WHERE (
+        conditions.push(`(
           ei.unique_id LIKE ?          OR
           ei.reason_for_leaving LIKE ? OR
           ei.stage LIKE ?              OR
           ei.status LIKE ?             OR
           e.first_name LIKE ?          OR
           e.last_name LIKE ?
-        )`;
+        )`);
         const term = `%${query.search}%`;
         params.push(term, term, term, term, term, term);
       }
 
+      if (query.departmentId) {
+        conditions.push('ei.department_id = ?');
+        params.push(query.departmentId);
+      }
+
+      if (query.locationId) {
+        conditions.push('ei.location_id = ?');
+        params.push(query.locationId);
+      }
+
+      if (query.countryId) {
+        conditions.push('ei.country_id = ?');
+        params.push(query.countryId);
+      }
+
+      const whereClause =
+        conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT COUNT(*) AS total
          FROM exit_interviews ei
-         ${joins}
+         ${DETAIL_JOINS}
          ${whereClause}`,
         params,
       );
@@ -194,16 +252,9 @@ export class ExitInterviewService {
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT
-           ei.*,
-           e.first_name AS staff_first_name,
-           e.last_name  AS staff_last_name,
-           d.name       AS department_name,
-           l.name       AS location_name,
-           c.name       AS country_name,
-           p.name       AS program_name
+        `SELECT ${DETAIL_SELECT}
          FROM exit_interviews ei
-         ${joins}
+         ${DETAIL_JOINS}
          ${whereClause}
          ORDER BY ei.created_at DESC
          LIMIT ? OFFSET ?`,
@@ -231,20 +282,9 @@ export class ExitInterviewService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT
-           ei.*,
-           e.first_name AS staff_first_name,
-           e.last_name  AS staff_last_name,
-           d.name       AS department_name,
-           l.name       AS location_name,
-           c.name       AS country_name,
-           p.name       AS program_name
+        `SELECT ${DETAIL_SELECT}
          FROM exit_interviews ei
-         LEFT JOIN employee e    ON e.id = ei.staff_id
-         LEFT JOIN departments d ON d.id = ei.department_id
-         LEFT JOIN locations l   ON l.id = ei.location_id
-         LEFT JOIN countries c   ON c.id = ei.country_id
-         LEFT JOIN programs p    ON p.id = ei.program_id
+         ${DETAIL_JOINS}
          WHERE ei.id = ?`,
         [id],
       );
@@ -264,20 +304,9 @@ export class ExitInterviewService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT
-           ei.*,
-           e.first_name AS staff_first_name,
-           e.last_name  AS staff_last_name,
-           d.name       AS department_name,
-           l.name       AS location_name,
-           c.name       AS country_name,
-           p.name       AS program_name
+        `SELECT ${DETAIL_SELECT}
          FROM exit_interviews ei
-         LEFT JOIN employee e    ON e.id = ei.staff_id
-         LEFT JOIN departments d ON d.id = ei.department_id
-         LEFT JOIN locations l   ON l.id = ei.location_id
-         LEFT JOIN countries c   ON c.id = ei.country_id
-         LEFT JOIN programs p    ON p.id = ei.program_id
+         ${DETAIL_JOINS}
          WHERE ei.unique_id = ?`,
         [uniqueId],
       );
@@ -299,20 +328,9 @@ export class ExitInterviewService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT
-           ei.*,
-           e.first_name AS staff_first_name,
-           e.last_name  AS staff_last_name,
-           d.name       AS department_name,
-           l.name       AS location_name,
-           c.name       AS country_name,
-           p.name       AS program_name
+        `SELECT ${DETAIL_SELECT}
          FROM exit_interviews ei
-         LEFT JOIN employee e    ON e.id = ei.staff_id
-         LEFT JOIN departments d ON d.id = ei.department_id
-         LEFT JOIN locations l   ON l.id = ei.location_id
-         LEFT JOIN countries c   ON c.id = ei.country_id
-         LEFT JOIN programs p    ON p.id = ei.program_id
+         ${DETAIL_JOINS}
          WHERE ei.staff_id = ?
          ORDER BY ei.created_at DESC`,
         [staffId],
@@ -324,11 +342,212 @@ export class ExitInterviewService {
       conn.release();
     }
   }
+
+  // GET /exit-interviews/supervisor/:supervisorId
+  async findBySupervisorId(
+    supervisorId: string,
+  ): Promise<ExitInterviewDetail[]> {
+    const conn = await this.pool.getConnection();
+    try {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT ${DETAIL_SELECT}
+         FROM exit_interviews ei
+         ${DETAIL_JOINS}
+         WHERE ei.supervisor_id = ?
+         ORDER BY ei.created_at DESC`,
+        [supervisorId],
+      );
+      return rows as ExitInterviewDetail[];
+    } catch (err) {
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  // GET /exit-interviews/pending/:department  (Operations | Finance)
+  async findPendingByDepartment(
+    department: string,
+  ): Promise<PaginatedResult<ExitInterviewDetail>> {
+    const conn = await this.pool.getConnection();
+    try {
+      const col =
+        department === 'Operations' ? 'operations_cleared' : 'finance_cleared';
+
+      const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT COUNT(*) AS total
+         FROM exit_interviews ei
+         ${DETAIL_JOINS}
+         WHERE ei.stage IN ('Operations', 'Finance') AND ei.${col} = 0`,
+      );
+      const total = countRow['total'] as number;
+
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT ${DETAIL_SELECT}
+         FROM exit_interviews ei
+         ${DETAIL_JOINS}
+         WHERE ei.stage IN ('Operations', 'Finance') AND ei.${col} = 0
+         ORDER BY ei.created_at DESC`,
+      );
+
+      return {
+        data: rows as ExitInterviewDetail[],
+        meta: { total, page: 1, limit: total, last_page: 1 },
+      };
+    } catch (err) {
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  // GET /exit-interviews/:id/clearance-status
+  async getClearanceStatus(id: number): Promise<ClearanceStatusResult> {
+    const conn = await this.pool.getConnection();
+    try {
+      const [[row]] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id, operations_cleared, finance_cleared FROM exit_interviews WHERE id = ?',
+        [id],
+      );
+      if (!row)
+        throw new NotFoundException(`Exit interview with id ${id} not found`);
+
+      const [clearances] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT
+           eic.*,
+           cli.name AS item_name
+         FROM exit_interview_clearances eic
+         LEFT JOIN check_list_items cli ON cli.id = eic.check_list_item_id
+         WHERE eic.exit_interview_id = ?
+         ORDER BY eic.cleared_at ASC`,
+        [id],
+      );
+
+      const opsDone = Boolean(row['operations_cleared']);
+      const finDone = Boolean(row['finance_cleared']);
+
+      return {
+        exit_interview_id: id,
+        operations_cleared: opsDone,
+        finance_cleared: finDone,
+        hr_can_finalize: opsDone && finDone,
+        clearances: clearances as Clearance[],
+      };
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  // POST /exit-interviews/:id/clear  (Operations or Finance clears their items)
+  async clearDepartment(
+    id: number,
+    department: 'Operations' | 'Finance',
+    checkListItemIds: number[],
+    notes?: string,
+  ): Promise<ClearanceStatusResult> {
+    const clearedBy = 'System';
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [existing] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id, operations_cleared, finance_cleared FROM exit_interviews WHERE unique_id = ?',
+        [id],
+      );
+      if (!existing.length)
+        throw new NotFoundException(`Exit interview with id ${id} not found`);
+
+      // Insert clearance rows for each checklist item (IGNORE duplicates)
+      for (const itemId of checkListItemIds) {
+        const unique_id = randomBytes(16).toString('hex');
+        await conn.execute(
+          `INSERT IGNORE INTO exit_interview_clearances
+             (unique_id, exit_interview_id, check_list_item_id, department, cleared_by, notes)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [unique_id, id, itemId, department, clearedBy, notes ?? null],
+        );
+      }
+
+      // Mark the department as cleared on the parent record
+      const col =
+        department === 'Operations' ? 'operations_cleared' : 'finance_cleared';
+      await conn.execute(
+        `UPDATE exit_interviews SET ${col} = 1 WHERE unique_id = ?`,
+        [id],
+      );
+
+      // Re-fetch updated flags
+      const [[updated]] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT operations_cleared, finance_cleared FROM exit_interviews WHERE unique_id = ?',
+        [id],
+      );
+
+      const opsDone = Boolean(updated['operations_cleared']);
+      const finDone = Boolean(updated['finance_cleared']);
+
+      // Both cleared → advance to HR_Final
+      if (opsDone && finDone) {
+        await conn.execute(
+          `UPDATE exit_interviews SET stage = 'HR_Final', status = 'In_Progress' WHERE unique_id = ?`,
+          [id],
+        );
+      }
+
+      await conn.commit();
+      return this.getClearanceStatus(id);
+    } catch (err) {
+      await conn.rollback();
+      if (err instanceof NotFoundException) throw err;
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  // PATCH /exit-interviews/:id/finalize  (HR final submission)
+  async finalize(id: string): Promise<ExitInterviewDetail> {
+    const conn = await this.pool.getConnection();
+    const finalizedBy = 'System';
+    try {
+      const [[row]] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT id, operations_cleared, finance_cleared, stage FROM exit_interviews WHERE unique_id = ?',
+        [id],
+      );
+      if (!row)
+        throw new NotFoundException(`Exit interview with id ${id} not found`);
+
+      if (!row['operations_cleared'] || !row['finance_cleared']) {
+        throw new InternalServerErrorException(
+          'Cannot finalize: Operations and Finance must both clear before HR can finalize.',
+        );
+      }
+
+      await conn.execute(
+        `UPDATE exit_interviews
+         SET stage = 'HR_Final', status = 'Completed', created_by = ?
+         WHERE unique_id = ?`,
+        [finalizedBy, id],
+      );
+
+      const exitId = row['id'] as number;
+
+      return this.findOne(exitId);
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
   // PATCH /exit-interviews/:id
   async update(
     id: number,
     dto: UpdateExitInterviewDto,
-  ): Promise<ExitInterview> {
+  ): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
@@ -338,7 +557,6 @@ export class ExitInterviewService {
       if (!existing.length)
         throw new NotFoundException(`Exit interview with id ${id} not found`);
 
-      // Map camelCase DTO keys to snake_case DB columns
       const columnMap: Record<string, string> = {
         staffId: 'staff_id',
         departmentId: 'department_id',
@@ -356,6 +574,9 @@ export class ExitInterviewService {
         wouldRecommend: 'would_recommend',
         stage: 'stage',
         status: 'status',
+        programId: 'program_id',
+        countryId: 'country_id',
+        locationId: 'location_id',
       };
 
       const fields = (
@@ -383,7 +604,7 @@ export class ExitInterviewService {
   }
 
   // DELETE /exit-interviews/:id
-  async remove(id: number): Promise<{ message: string }> {
+  async remove(id: string): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
@@ -393,7 +614,9 @@ export class ExitInterviewService {
       if (!existing.length)
         throw new NotFoundException(`Exit interview with id ${id} not found`);
 
-      await conn.execute('DELETE FROM exit_interviews WHERE id = ?', [id]);
+      await conn.execute('DELETE FROM exit_interviews WHERE unique_id = ?', [
+        id,
+      ]);
 
       return { message: `Exit interview ${id} deleted successfully` };
     } catch (err) {
