@@ -210,11 +210,12 @@ export class LeavesService {
   CONCAT(e.first_name, ' ', e.last_name) AS employee_name, 
   e.designation AS employee_designation 
 FROM leaves l
-LEFT JOIN departments d ON d.unique_id = l.department_id 
 LEFT JOIN employee e ON e.staff_id = l.staff_id
-LEFT JOIN programs p ON p.unique_id = l.program 
-LEFT JOIN locations o ON o.unique_id = l.location 
-LEFT JOIN employee s ON s.staff_id = l.supervisor 
+LEFT JOIN departments d ON d.unique_id = e.department
+LEFT JOIN programs p ON p.unique_id = e.program 
+LEFT JOIN locations o ON o.unique_id = e.location 
+LEFT JOIN employee s ON s.staff_id = e.supervisor
+LEFT JOIN countries c ON c.unique_id = e.country
 ${whereClause}
 ORDER BY l.created_at DESC
 LIMIT ? OFFSET ?`,
