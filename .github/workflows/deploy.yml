@@ -5,7 +5,12 @@ on:
     branches:
       - main
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}  # e.g. jerry/peopleCentral
+
 jobs:
+  # ─── Job 1: Test (unchanged from your original) ───────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
@@ -24,23 +29,75 @@ jobs:
       - name: Run tests
         run: npm run test
 
-  deploy:
+  # ─── Job 2: Build Docker image & push to GHCR ─────────────────────────────
+  build:
     runs-on: ubuntu-latest
-    needs: test
+    needs: test                         # only runs if tests pass
+    permissions:
+      contents: read
+      packages: write                   # needed to push to GitHub Container Registry
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to EC2
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}  # auto-provided, no setup needed
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha          # cache layers between builds → faster
+          cache-to: type=gha,mode=max
+
+  # ─── Job 3: Deploy to EC2 ─────────────────────────────────────────────────
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build                        # only runs if image built successfully
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: ${{ secrets.EC2_APP_PATH }}
+
+      - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -e
+
             cd ${{ secrets.EC2_APP_PATH }}
-            git pull origin main
-            npm install
-            npm run build
-            pm2 restart nest-backend --update-env
+
+            # Log in to GitHub Container Registry from EC2
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
+              -u ${{ github.actor }} --password-stdin
+
+            # Pull the latest image we just built
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Update docker-compose to use the pre-built image instead of building on EC2
+            sed -i 's|build: \.|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest|' docker-compose.yml
+
+            # Restart app with zero downtime (node-exporter & cadvisor keep running)
+            docker compose up -d --remove-orphans
+
+            # Clean up old images to save disk space
+            docker image prune -f
