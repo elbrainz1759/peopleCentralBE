@@ -7,8 +7,9 @@ import { NotFoundException } from '@nestjs/common';
 describe('ExitInterviewsService', () => {
   let service: ExitInterviewService;
   const mockPool = {
+    query: jest.fn(),
     getConnection: jest.fn(),
-  } as { getConnection: jest.Mock };
+  } as { query: jest.Mock; getConnection: jest.Mock };
   const mockConn = {
     query: jest.fn(),
     execute: jest.fn(),
@@ -21,6 +22,8 @@ describe('ExitInterviewsService', () => {
       .spyOn(require('crypto'), 'randomBytes')
       .mockReturnValue(Buffer.alloc(16, 0));
     mockPool.getConnection.mockResolvedValue(mockConn);
+    // ensureExists (used in create) calls pool.query directly
+    mockPool.query.mockResolvedValue([[{ unique_id: '1' }]]);
     service = new ExitInterviewService(mockPool as never);
   });
 
@@ -31,8 +34,9 @@ describe('ExitInterviewsService', () => {
   describe('create', () => {
     it('inserts and returns record via findOne', async () => {
       mockConn.query
-        .mockResolvedValueOnce([{ insertId: 5 }])
-        .mockResolvedValueOnce([[{ id: 5, unique_id: 'abc', staff_id: 1 }]]);
+        .mockResolvedValueOnce([[{ id: 1 }]]) // supervisor check
+        .mockResolvedValueOnce([{ insertId: 5 }]) // INSERT
+        .mockResolvedValueOnce([[{ id: 5, unique_id: 'abc', staff_id: 1 }]]); // findOne
       const dto = {
         staffId: 1,
         departmentId: 1,
@@ -54,8 +58,9 @@ describe('ExitInterviewsService', () => {
 
     it('uses default stage and status when not provided', async () => {
       mockConn.query
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([[{ id: 1 }]]);
+        .mockResolvedValueOnce([[{ id: 1 }]]) // supervisor check
+        .mockResolvedValueOnce([{ insertId: 1 }]) // INSERT
+        .mockResolvedValueOnce([[{ id: 1 }]]); // findOne
       const dto = {
         staffId: 1,
         departmentId: 1,
@@ -68,8 +73,8 @@ describe('ExitInterviewsService', () => {
         wouldRecommend: 'Maybe',
       };
       await service.create(dto as never);
-      const insertCall = mockConn.query.mock.calls[0];
-      expect(insertCall[1]).toContain('Employee');
+      const insertCall = mockConn.query.mock.calls[1]; // call 0 = supervisor, call 1 = INSERT
+      expect(insertCall[1]).toContain('HR');
       expect(insertCall[1]).toContain('Pending');
     });
   });
@@ -201,13 +206,13 @@ describe('ExitInterviewsService', () => {
     });
 
     it('deletes and returns success message', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
+      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]); // check exists
       mockConn.execute.mockResolvedValue([{}]);
-      const res = await service.remove(1);
+      const res = await service.remove('1');
       expect(res).toEqual({ message: 'Exit interview 1 deleted successfully' });
       expect(mockConn.execute).toHaveBeenCalledWith(
-        'DELETE FROM exit_interviews WHERE id = ?',
-        [1],
+        'DELETE FROM exit_interviews WHERE unique_id = ?',
+        ['1'],
       );
     });
   });

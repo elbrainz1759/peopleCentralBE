@@ -1,15 +1,14 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { DataTrackerService } from './data-tracker.service';
 
 describe('DataTrackerService', () => {
   let service: DataTrackerService;
+  const mockPool = {
+    query: jest.fn(),
+  } as { query: jest.Mock };
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [DataTrackerService],
-    }).compile();
-
-    service = module.get<DataTrackerService>(DataTrackerService);
+  beforeEach(() => {
+    jest.resetAllMocks();
+    service = new DataTrackerService(mockPool as never);
   });
 
   it('should be defined', () => {
