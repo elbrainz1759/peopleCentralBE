@@ -40,6 +40,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Lowercase image name
+        id: image
+        run: |
+          echo "name=ghcr.io/$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]'):latest" >> $GITHUB_OUTPUT
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -55,8 +60,7 @@ jobs:
         with:
           context: .
           push: true
-          # github.repository lowercased → fixes "must be lowercase" error
-          tags: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}:latest
+          tags: ${{ steps.image.outputs.name }}   # ← always lowercase
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -92,8 +96,7 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io \
               -u ${{ github.actor }} --password-stdin
 
-            # Image name fully lowercased
-            IMAGE="ghcr.io/$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')/$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]'):latest"
+            IMAGE="ghcr.io/$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]'):latest"
 
             docker pull $IMAGE
 
