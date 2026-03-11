@@ -21,8 +21,16 @@ import { LeaveBalancesModule } from './leave-balances/leave-balances.module';
 import { CheckListItemsModule } from './check-list-items/check-list-items.module';
 import { ExitInterviewModule } from './exit-interviews/exit-interviews.module';
 import { DataTrackerModule } from './data-tracker/data-tracker.module';
+import { PrometheusModule } from '@willsoto/nestjs-prometheus'; // 👈 ADD THIS
+
 @Module({
   imports: [
+    PrometheusModule.register({
+      defaultMetrics: {
+        enabled: true, // auto-collects Node.js memory, CPU, event loop lag
+      },
+      path: '/metrics', // Grafana Alloy will scrape GET /metrics
+    }),
     DatabaseModule,
     AuthModule,
     UsersModule,
