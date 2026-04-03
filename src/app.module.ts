@@ -22,6 +22,7 @@ import { CheckListItemsModule } from './check-list-items/check-list-items.module
 import { ExitInterviewModule } from './exit-interviews/exit-interviews.module';
 import { DataTrackerModule } from './data-tracker/data-tracker.module';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus'; // 👈 ADD THIS
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -48,7 +49,7 @@ import { PrometheusModule } from '@willsoto/nestjs-prometheus'; // 👈 ADD THIS
     ExitInterviewModule,
     DataTrackerModule,
   ],
-  controllers: [AppController, LeaveBalancesController],
+  controllers: [AppController, LeaveBalancesController, HealthController],
   providers: [
     AppService,
     {
