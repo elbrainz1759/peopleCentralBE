@@ -36,6 +36,9 @@ COPY --from=builder /app/dist ./dist
 # Switch to non-root user
 USER nestjs
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -qO- http://localhost:3000/health || exit 1
+
 # Tell Docker this container listens on port 3000
 EXPOSE 3000
 
