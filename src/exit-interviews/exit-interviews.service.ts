@@ -445,10 +445,16 @@ export class ExitInterviewService {
   // POST /exit-interviews/:id/clear  (Operations or Finance clears their items)
   async clearDepartment(
     id: number,
-    department: 'Operations' | 'Finance',
+    department: 'Operations' | 'Finance' | 'HR',
     checkListItemIds: number[],
     notes?: string,
   ): Promise<ClearanceStatusResult> {
+    console.log(
+      `Clearing department ${department} for exit interview ${id} with items:`,
+      checkListItemIds,
+      'and notes:',
+      notes,
+    );
     const clearedBy = 'System';
     const conn = await this.pool.getConnection();
     try {
