@@ -434,6 +434,7 @@ export class ExitInterviewService {
         clearances: clearances as Clearance[],
       };
     } catch (err) {
+      console.error('Get clearance status error:', err);
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
     } finally {
@@ -499,6 +500,7 @@ export class ExitInterviewService {
       await conn.commit();
       return this.getClearanceStatus(id);
     } catch (err) {
+      console.error('Clear department error:', err);
       await conn.rollback();
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
