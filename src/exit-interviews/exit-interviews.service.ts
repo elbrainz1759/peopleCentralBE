@@ -52,10 +52,10 @@ export interface ExitInterviewDetail extends ExitInterview {
 }
 
 export interface Clearance {
-  id: number;
+  id: string;
   unique_id: string;
-  exit_interview_id: number;
-  check_list_item_id: number;
+  exit_interview_id: string;
+  check_list_item_id: string;
   department: string;
   cleared_by: string;
   cleared_at: Date;
@@ -64,7 +64,7 @@ export interface Clearance {
 }
 
 export interface ClearanceStatusResult {
-  exit_interview_id: number;
+  exit_interview_id: string;
   operations_cleared: boolean;
   finance_cleared: boolean;
   hr_can_finalize: boolean;
@@ -154,7 +154,7 @@ export class ExitInterviewService {
 
       await Promise.all(checks);
 
-      const [result] = await conn.query<mysql.ResultSetHeader>(
+      await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO exit_interviews (
           unique_id, staff_id, department_id, supervisor_id, program_id, country_id, location_id,
           resignation_date, reason_for_leaving, other_reason,
@@ -187,7 +187,7 @@ export class ExitInterviewService {
         ],
       );
 
-      return this.findOne(result.insertId);
+      return this.findOne(unique_id);
     } catch (err) {
       console.error('Create exit interview error:', err);
       if (err instanceof NotFoundException) throw err;
@@ -278,14 +278,14 @@ export class ExitInterviewService {
   }
 
   // GET /exit-interviews/:id
-  async findOne(id: number): Promise<ExitInterviewDetail> {
+  async findOne(id: string): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ${DETAIL_SELECT}
          FROM exit_interviews ei
          ${DETAIL_JOINS}
-         WHERE ei.id = ?`,
+         WHERE ei.unique_id = ?`,
         [id],
       );
       if (!rows.length)
@@ -402,7 +402,7 @@ export class ExitInterviewService {
   }
 
   // GET /exit-interviews/:id/clearance-status
-  async getClearanceStatus(id: number): Promise<ClearanceStatusResult> {
+  async getClearanceStatus(id: string): Promise<ClearanceStatusResult> {
     const conn = await this.pool.getConnection();
     try {
       const [[row]] = await conn.query<mysql.RowDataPacket[]>(
@@ -444,7 +444,7 @@ export class ExitInterviewService {
 
   // POST /exit-interviews/:id/clear  (Operations or Finance clears their items)
   async clearDepartment(
-    id: number,
+    id: string,
     department: 'Operations' | 'Finance' | 'HR',
     checkListItemIds: number[],
     notes?: string,
@@ -540,7 +540,7 @@ export class ExitInterviewService {
         [finalizedBy, id],
       );
 
-      const exitId = row['id'] as number;
+      const exitId = row['unique_id'] as string;
 
       return this.findOne(exitId);
     } catch (err) {
@@ -553,7 +553,7 @@ export class ExitInterviewService {
 
   // PATCH /exit-interviews/:id
   async update(
-    id: number,
+    id: string,
     dto: UpdateExitInterviewDto,
   ): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
@@ -598,7 +598,7 @@ export class ExitInterviewService {
       const values = fields.map((f) => dto[f]);
 
       await conn.execute(
-        `UPDATE exit_interviews SET ${setClauses} WHERE id = ?`,
+        `UPDATE exit_interviews SET ${setClauses} WHERE unique_id = ?`,
         [...values, id],
       );
 
