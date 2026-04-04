@@ -558,7 +558,7 @@ export class ExitInterviewService {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM exit_interviews WHERE id = ?',
+        'SELECT id FROM exit_interviews WHERE unique_id = ?',
         [id],
       );
       if (!existing.length)
@@ -615,7 +615,7 @@ export class ExitInterviewService {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM exit_interviews WHERE id = ?',
+        'SELECT id FROM exit_interviews WHERE unique_id = ?',
         [id],
       );
       if (!existing.length)
