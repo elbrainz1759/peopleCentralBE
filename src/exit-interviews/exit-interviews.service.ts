@@ -541,9 +541,7 @@ export class ExitInterviewService {
         [finalizedBy, id],
       );
 
-      const exitId = row['unique_id'] as string;
-
-      return this.findOne(exitId);
+      return this.findOne(id);
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
