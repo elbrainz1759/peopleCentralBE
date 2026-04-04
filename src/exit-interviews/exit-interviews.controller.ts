@@ -78,22 +78,20 @@ export class ExitInterviewController {
 
   // GET /exit-interviews/:id/clearance-status
   @Get(':id/clearance-status')
-  getClearanceStatus(
-    @Param('id', ParseIntPipe) id: string,
-  ): Promise<ClearanceStatusResult> {
+  getClearanceStatus(@Param('id') id: string): Promise<ClearanceStatusResult> {
     return this.exitInterviewService.getClearanceStatus(id);
   }
 
   // GET /exit-interviews/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: string): Promise<ExitInterviewDetail> {
+  findOne(@Param('id') id: string): Promise<ExitInterviewDetail> {
     return this.exitInterviewService.findOne(id);
   }
 
   // POST /exit-interviews/:id/clear
   @Post(':id/clear')
   clearDepartment(
-    @Param('id', ParseIntPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: ClearDepartmentDto,
   ): Promise<ClearanceStatusResult> {
     return this.exitInterviewService.clearDepartment(
@@ -106,16 +104,14 @@ export class ExitInterviewController {
 
   // PATCH /exit-interviews/:id/finalize  (HR final submission)
   @Patch(':id/finalize')
-  finalize(
-    @Param('id', ParseIntPipe) id: string,
-  ): Promise<ExitInterviewDetail> {
+  finalize(@Param('id') id: string): Promise<ExitInterviewDetail> {
     return this.exitInterviewService.finalize(id);
   }
 
   // PATCH /exit-interviews/:id
   @Patch(':id')
   update(
-    @Param('id', ParseIntPipe) id: string,
+    @Param('id') id: string,
     @Body() dto: UpdateExitInterviewDto,
   ): Promise<ExitInterviewDetail> {
     return this.exitInterviewService.update(id, dto);
@@ -123,7 +119,7 @@ export class ExitInterviewController {
 
   // DELETE /exit-interviews/:id
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: string): Promise<{ message: string }> {
+  remove(@Param('id') id: string): Promise<{ message: string }> {
     return this.exitInterviewService.remove(id);
   }
 }

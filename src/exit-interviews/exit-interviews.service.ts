@@ -406,7 +406,7 @@ export class ExitInterviewService {
     const conn = await this.pool.getConnection();
     try {
       const [[row]] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id, operations_cleared, finance_cleared FROM exit_interviews WHERE id = ?',
+        'SELECT id, operations_cleared, finance_cleared FROM exit_interviews WHERE unique_id  = ?',
         [id],
       );
       if (!row)
@@ -468,6 +468,7 @@ export class ExitInterviewService {
         throw new NotFoundException(`Exit interview with id ${id} not found`);
 
       // Insert clearance rows for each checklist item (IGNORE duplicates)
+
       for (const itemId of checkListItemIds) {
         const unique_id = randomBytes(16).toString('hex');
         await conn.execute(
