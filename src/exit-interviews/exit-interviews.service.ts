@@ -450,7 +450,7 @@ export class ExitInterviewService {
     notes?: string,
   ): Promise<ClearanceStatusResult> {
     console.log(
-      `Clearing department ${department} for exit interview ${id} with items:`,
+      `Clearing department ${department} for exit interview with id of ${id} with items:`,
       checkListItemIds,
       'and notes:',
       notes,
