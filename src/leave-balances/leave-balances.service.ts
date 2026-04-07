@@ -19,7 +19,6 @@ export interface LeaveBalance {
   created_by: string;
   created_at: Date;
 }
-//Leave interfaces
 export interface LeaveBalanceTransaction {
   id: number;
   unique_id: string;

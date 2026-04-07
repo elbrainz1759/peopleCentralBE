@@ -17,6 +17,7 @@ export interface LeaveType {
   id: number;
   unique_id: string;
   name: string;
+  hours: number;
   description: string;
   country: string;
   created_by: string;
