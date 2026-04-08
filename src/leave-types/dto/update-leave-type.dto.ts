@@ -12,4 +12,7 @@ export class UpdateLeaveTypeDto {
   @IsString()
   @IsOptional()
   country?: string;
+
+  @IsOptional()
+  hours?: number;
 }
