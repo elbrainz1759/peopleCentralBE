@@ -58,9 +58,16 @@ export class LeaveTypesService {
       const created_by: string = 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO leave_types (unique_id, name, description, country, created_by)
-         VALUES (?, ?, ?, ?, ?)`,
-        [unique_id, dto.name, dto.description, dto.country, created_by],
+        `INSERT INTO leave_types (unique_id, name, description, country, created_by, hours)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          unique_id,
+          dto.name,
+          dto.description,
+          dto.country,
+          created_by,
+          dto.hours,
+        ],
       );
 
       return this.findOne(result.insertId);
