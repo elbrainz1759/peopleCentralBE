@@ -24,12 +24,7 @@ describe('LeaveTypeConfigsController', () => {
   // -------------------------------------------------------------------------
   describe('create', () => {
     it('proxies dto to service and returns created config', async () => {
-      const dto: any = {
-        leaveTypeId: 1,
-        country: 'Nigeria',
-        annualHours: 200,
-        monthlyAccrualHours: 10,
-      };
+      const dto: any = { leaveTypeId: 1, country: 'Nigeria', annualHours: 200, monthlyAccrualHours: 10 };
       mockService.create.mockResolvedValue({ id: 1, ...dto });
 
       const result = await controller.create(dto);
@@ -54,13 +49,14 @@ describe('LeaveTypeConfigsController', () => {
 
   // -------------------------------------------------------------------------
   describe('findByLeaveType', () => {
-    it('passes parsed leaveTypeId to service', async () => {
+    it('passes leaveTypeId as a string to service', async () => {
       const rows = [{ id: 1, leave_type_id: 3 }];
       mockService.findByLeaveType.mockResolvedValue(rows);
 
-      const result = await controller.findByLeaveType(3);
+      // NestJS delivers route params as strings — no ParseIntPipe on this param
+      const result = await controller.findByLeaveType('3');
 
-      expect(mockService.findByLeaveType).toHaveBeenCalledWith(3);
+      expect(mockService.findByLeaveType).toHaveBeenCalledWith('3');
       expect(result).toEqual(rows);
     });
   });
@@ -107,13 +103,15 @@ describe('LeaveTypeConfigsController', () => {
 
   // -------------------------------------------------------------------------
   describe('remove', () => {
-    it('passes id to service and returns deletion confirmation', async () => {
-      mockService.remove.mockResolvedValue({ deleted: true, id: 4 });
+    it('passes unique_id string to service and returns deletion confirmation', async () => {
+      const uniqueId = 'a3f1c2e4b5d6e7f8a9b0c1d2e3f4a5b6';
+      mockService.remove.mockResolvedValue({ deleted: true, unique_id: uniqueId });
 
-      const result = await controller.remove(4);
+      const result = await controller.remove(uniqueId);
 
-      expect(mockService.remove).toHaveBeenCalledWith(4);
-      expect(result).toEqual({ deleted: true, id: 4 });
+      // Must be called with the raw string — no parseInt coercion
+      expect(mockService.remove).toHaveBeenCalledWith(uniqueId);
+      expect(result).toEqual({ deleted: true, unique_id: uniqueId });
     });
   });
 });

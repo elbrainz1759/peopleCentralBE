@@ -28,14 +28,14 @@ describe('LeaveTypeConfigsService', () => {
   // -------------------------------------------------------------------------
   describe('create', () => {
     const dto: any = {
-      leaveTypeId: 1,
+      leaveTypeId: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6',
       country: 'Nigeria',
       annualHours: 200,
       monthlyAccrualHours: 10,
     };
     const savedRow = {
-      id: '1',
-      leave_type_id: 1,
+      id: 1,
+      leave_type_id: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6',
       country: 'Nigeria',
       annual_hours: 200,
       monthly_accrual_hours: 10,
@@ -44,16 +44,16 @@ describe('LeaveTypeConfigsService', () => {
 
     it('creates a config and returns the saved record', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[{ id: '1' }]]) // leave_types exists check
-        .mockResolvedValueOnce([[]]) // no conflict
-        .mockResolvedValueOnce([{ insertId: '1' }]) // INSERT
+        .mockResolvedValueOnce([[{ id: 1 }]])          // leave_types exists check
+        .mockResolvedValueOnce([[]])                    // no conflict
+        .mockResolvedValueOnce([{ insertId: 1 }])      // INSERT
         // findOne internal call (separate connection)
-        .mockResolvedValueOnce([[savedRow]]); // SELECT for findOne
+        .mockResolvedValueOnce([[savedRow]]);           // SELECT for findOne
 
       // findOne opens its own connection — mock getConnection again
       mockPool.getConnection
-        .mockResolvedValueOnce(mockConn) // create() connection
-        .mockResolvedValueOnce(mockConn); // findOne() connection
+        .mockResolvedValueOnce(mockConn)   // create() connection
+        .mockResolvedValueOnce(mockConn);  // findOne() connection
 
       const result = await service.create(dto);
 
@@ -70,20 +70,20 @@ describe('LeaveTypeConfigsService', () => {
 
     it('throws ConflictException when config already exists for that leave type + country', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[{ id: 1 }]]) // leave type exists
-        .mockResolvedValueOnce([[{ id: 5 }]]); // conflict found
+        .mockResolvedValueOnce([[{ id: 1 }]])    // leave type exists
+        .mockResolvedValueOnce([[{ id: 5 }]]);   // conflict found
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
     });
 
     it('defaults monthlyAccrualHours to null when not provided', async () => {
       const dtoNoAccrual: any = {
-        leaveTypeId: 2,
+        leaveTypeId: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7',
         country: 'Nigeria',
         annualHours: 90,
       };
       mockConn.query
-        .mockResolvedValueOnce([[{ id: 2 }]])
+        .mockResolvedValueOnce([[{ id: 2, unique_id: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7' }]])
         .mockResolvedValueOnce([[]])
         .mockResolvedValueOnce([{ insertId: 2 }])
         .mockResolvedValueOnce([[{ id: 2, monthly_accrual_hours: null }]]);
@@ -142,18 +142,18 @@ describe('LeaveTypeConfigsService', () => {
       const rows = [{ id: 1, leave_type_id: 1, country: 'Nigeria' }];
       mockConn.query.mockResolvedValueOnce([rows]);
 
-      const result = await service.findByLeaveType(1);
+      const result = await service.findByLeaveType('a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6');
 
       expect(result).toEqual(rows);
       const [sql, params] = mockConn.query.mock.calls[0];
       expect(sql).toContain('WHERE ltcc.leave_type_id = ?');
-      expect(params).toEqual([1]);
+      expect(params).toEqual(['a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6']);
     });
 
     it('returns empty array when no configs exist for the leave type', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
-      const result = await service.findByLeaveType(99);
+      const result = await service.findByLeaveType('nonexistent-unique-id');
 
       expect(result).toEqual([]);
     });
@@ -161,7 +161,7 @@ describe('LeaveTypeConfigsService', () => {
     it('throws InternalServerErrorException on db error', async () => {
       mockConn.query.mockRejectedValueOnce(new Error('fail'));
 
-      await expect(service.findByLeaveType(1)).rejects.toThrow(
+      await expect(service.findByLeaveType('a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6')).rejects.toThrow(
         InternalServerErrorException,
       );
     });
@@ -204,11 +204,7 @@ describe('LeaveTypeConfigsService', () => {
   // -------------------------------------------------------------------------
   describe('findOne', () => {
     it('returns the config when found', async () => {
-      const row = {
-        id: 1,
-        country: 'Nigeria',
-        leave_type_name: 'Annual Leave',
-      };
+      const row = { id: 1, country: 'Nigeria', leave_type_name: 'Annual Leave' };
       mockConn.query.mockResolvedValueOnce([[row]]);
 
       const result = await service.findOne(1);
@@ -235,7 +231,7 @@ describe('LeaveTypeConfigsService', () => {
   describe('update', () => {
     const existingRow = {
       id: 1,
-      leave_type_id: 1,
+      leave_type_id: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6',
       country: 'Nigeria',
       annual_hours: 200,
       monthly_accrual_hours: 10,
@@ -244,13 +240,13 @@ describe('LeaveTypeConfigsService', () => {
     it('updates provided fields and returns the updated record', async () => {
       const updatedRow = { ...existingRow, annual_hours: 240 };
       mockConn.query
-        .mockResolvedValueOnce([[existingRow]]) // SELECT current
-        .mockResolvedValueOnce([{}]) // UPDATE
-        .mockResolvedValueOnce([[updatedRow]]); // findOne SELECT
+        .mockResolvedValueOnce([[existingRow]])   // SELECT current
+        .mockResolvedValueOnce([{}])              // UPDATE
+        .mockResolvedValueOnce([[updatedRow]]);   // findOne SELECT
 
       mockPool.getConnection
-        .mockResolvedValueOnce(mockConn) // update() connection
-        .mockResolvedValueOnce(mockConn); // findOne() connection
+        .mockResolvedValueOnce(mockConn)   // update() connection
+        .mockResolvedValueOnce(mockConn);  // findOne() connection
 
       const result = await service.update(1, { annualHours: 240 });
 
@@ -276,12 +272,12 @@ describe('LeaveTypeConfigsService', () => {
 
     it('throws ConflictException when the new leave_type + country combo already exists', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[existingRow]]) // SELECT current
-        .mockResolvedValueOnce([[{ id: 9 }]]); // conflict check → taken by another row
+        .mockResolvedValueOnce([[existingRow]])   // SELECT current
+        .mockResolvedValueOnce([[{ id: 9 }]]);   // conflict check → taken by another row
 
-      await expect(service.update(1, { country: 'Kenya' })).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.update(1, { country: 'Kenya' }),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('allows updating monthlyAccrualHours to null (convert to fixed entitlement)', async () => {
@@ -314,28 +310,39 @@ describe('LeaveTypeConfigsService', () => {
 
   // -------------------------------------------------------------------------
   describe('remove', () => {
-    it('deletes the config and returns confirmation', async () => {
+    const uniqueId = 'a3f1c2e4b5d6e7f8a9b0c1d2e3f4a5b6';
+
+    it('deletes the config by unique_id and returns confirmation', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[{ id: 1 }]]) // exists check
-        .mockResolvedValueOnce([{}]); // DELETE
+        .mockResolvedValueOnce([[{ unique_id: uniqueId }]])  // exists check by unique_id
+        .mockResolvedValueOnce([{}]);                         // DELETE
 
-      const result = await service.remove(1);
+      const result = await service.remove(uniqueId);
 
-      expect(result).toEqual({ deleted: true, id: 1 });
+      expect(result).toEqual({ deleted: true, id: uniqueId });
+
+      // Verify both queries used unique_id, not the numeric id
+      const selectCall = mockConn.query.mock.calls[0];
+      expect(selectCall[0]).toContain('WHERE unique_id = ?');
+      expect(selectCall[1]).toEqual([uniqueId]);
+
       const deleteSql = mockConn.query.mock.calls[1][0] as string;
       expect(deleteSql).toContain('DELETE FROM leave_type_country_config');
+      expect(mockConn.query.mock.calls[1][1]).toEqual([uniqueId]);
     });
 
     it('throws NotFoundException when config does not exist', async () => {
       mockConn.query.mockResolvedValueOnce([[]]); // not found
 
-      await expect(service.remove(999)).rejects.toThrow(NotFoundException);
+      await expect(service.remove('nonexistent-unique-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('throws InternalServerErrorException on unexpected db error', async () => {
       mockConn.query.mockRejectedValueOnce(new Error('fail'));
 
-      await expect(service.remove(1)).rejects.toThrow(
+      await expect(service.remove(uniqueId)).rejects.toThrow(
         InternalServerErrorException,
       );
       expect(mockConn.release).toHaveBeenCalled();
