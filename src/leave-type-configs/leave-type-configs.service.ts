@@ -107,7 +107,7 @@ export class LeaveTypeConfigsService {
   // ---------------------------------------------------------------------------
   // GET /leave-type-configs/leave-type/:leaveTypeId
   // ---------------------------------------------------------------------------
-  async findByLeaveType(leaveTypeId: number): Promise<LeaveTypeConfig[]> {
+  async findByLeaveType(leaveTypeId: string): Promise<LeaveTypeConfig[]> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
@@ -259,22 +259,23 @@ export class LeaveTypeConfigsService {
   // ---------------------------------------------------------------------------
   // DELETE /leave-type-configs/:id
   // ---------------------------------------------------------------------------
-  async remove(id: number): Promise<{ deleted: true; id: number }> {
+  async remove(id: string): Promise<{ deleted: true; id: string }> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM leave_type_country_config WHERE id = ?',
+        'SELECT unique_id FROM leave_type_country_config WHERE unique_id = ?',
         [id],
       );
       if (!rows.length) {
         throw new NotFoundException(
-          `Leave type config with id ${id} not found`,
+          `Leave type config with unique_id ${id} not found`,
         );
       }
 
-      await conn.query('DELETE FROM leave_type_country_config WHERE id = ?', [
-        id,
-      ]);
+      await conn.query(
+        'DELETE FROM leave_type_country_config WHERE unique_id = ?',
+        [id],
+      );
 
       return { deleted: true, id };
     } catch (err) {

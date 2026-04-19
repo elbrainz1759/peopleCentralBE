@@ -35,7 +35,7 @@ export class LeaveTypeConfigsController {
 
   // GET /leave-type-configs/leave-type/:leaveTypeId
   @Get('leave-type/:leaveTypeId')
-  findByLeaveType(@Param('leaveTypeId', ParseIntPipe) leaveTypeId: number) {
+  findByLeaveType(@Param('leaveTypeId') leaveTypeId: string) {
     return this.leaveTypeConfigsService.findByLeaveType(leaveTypeId);
   }
 
@@ -63,7 +63,7 @@ export class LeaveTypeConfigsController {
   // DELETE /leave-type-configs/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.leaveTypeConfigsService.remove(id);
   }
 }
