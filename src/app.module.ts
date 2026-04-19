@@ -53,7 +53,12 @@ import { LeaveTypeConfigsModule } from './leave-type-configs/leave-type-configs.
     DataTrackerModule,
     LeaveTypeConfigsModule,
   ],
-  controllers: [AppController, LeaveBalancesController, HealthController, LeaveTypeConfigsController],
+  controllers: [
+    AppController,
+    LeaveBalancesController,
+    HealthController,
+    LeaveTypeConfigsController,
+  ],
   providers: [
     AppService,
     {

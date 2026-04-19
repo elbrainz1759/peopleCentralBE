@@ -10,7 +10,7 @@ import {
 export class UpdateLeaveTypeConfigDto {
   @IsOptional()
   @IsInt()
-  leaveTypeId?: number;
+  leaveTypeId?: string;
 
   @IsOptional()
   @IsString()

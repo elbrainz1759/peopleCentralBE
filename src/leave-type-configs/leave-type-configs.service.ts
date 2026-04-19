@@ -14,7 +14,7 @@ import { UpdateLeaveTypeConfigDto } from './dto/update-leave-type-config.dto';
 export interface LeaveTypeConfig {
   id: number;
   unique_id: string;
-  leave_type_id: number;
+  leave_type_id: string;
   leave_type_name?: string;
   country: string;
   annual_hours: number;
@@ -32,15 +32,16 @@ export class LeaveTypeConfigsService {
   // ---------------------------------------------------------------------------
   async create(dto: CreateLeaveTypeConfigDto): Promise<LeaveTypeConfig> {
     const conn = await this.pool.getConnection();
+
     try {
       // Verify leave type exists
       const [ltRows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM leave_types WHERE id = ?',
+        'SELECT id FROM leave_types WHERE unique_id = ?',
         [dto.leaveTypeId],
       );
       if (!ltRows.length) {
         throw new BadRequestException(
-          `Leave type with id ${dto.leaveTypeId} not found`,
+          `Leave type with unique_id ${dto.leaveTypeId} not found`,
         );
       }
 

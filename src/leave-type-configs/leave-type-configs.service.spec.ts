@@ -34,7 +34,7 @@ describe('LeaveTypeConfigsService', () => {
       monthlyAccrualHours: 10,
     };
     const savedRow = {
-      id: 1,
+      id: '1',
       leave_type_id: 1,
       country: 'Nigeria',
       annual_hours: 200,
@@ -44,9 +44,9 @@ describe('LeaveTypeConfigsService', () => {
 
     it('creates a config and returns the saved record', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[{ id: 1 }]]) // leave_types exists check
+        .mockResolvedValueOnce([[{ id: '1' }]]) // leave_types exists check
         .mockResolvedValueOnce([[]]) // no conflict
-        .mockResolvedValueOnce([{ insertId: 1 }]) // INSERT
+        .mockResolvedValueOnce([{ insertId: '1' }]) // INSERT
         // findOne internal call (separate connection)
         .mockResolvedValueOnce([[savedRow]]); // SELECT for findOne
 

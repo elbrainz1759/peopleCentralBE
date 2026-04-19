@@ -9,7 +9,7 @@ import {
 
 export class CreateLeaveTypeConfigDto {
   @IsInt()
-  leaveTypeId: number = 0;
+  leaveTypeId: string = '';
 
   @IsString()
   @IsNotEmpty()
@@ -19,7 +19,6 @@ export class CreateLeaveTypeConfigDto {
   @Min(0)
   annualHours: number = 0;
 
-  // Null = not an accrual type. Omit entirely for fixed-entitlement leave types.
   @IsOptional()
   @IsNumber()
   @Min(0)
