@@ -16,15 +16,12 @@ import { LocationsModule } from './locations/locations.module';
 import { DepartmentsModule } from './departments/departments.module';
 import { ProgramsModule } from './programs/programs.module';
 import { LeavesModule } from './leaves/leaves.module';
-import { LeaveBalancesController } from './leave-balances/leave-balances.controller';
 import { LeaveBalancesModule } from './leave-balances/leave-balances.module';
 import { CheckListItemsModule } from './check-list-items/check-list-items.module';
 import { ExitInterviewModule } from './exit-interviews/exit-interviews.module';
 import { DataTrackerModule } from './data-tracker/data-tracker.module';
-import { PrometheusModule } from '@willsoto/nestjs-prometheus'; // 👈 ADD THIS
+import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { HealthController } from './health/health.controller';
-import { LeaveTypeConfigsService } from './leave-type-configs/leave-type-configs.service';
-import { LeaveTypeConfigsController } from './leave-type-configs/leave-type-configs.controller';
 import { LeaveTypeConfigsModule } from './leave-type-configs/leave-type-configs.module';
 
 @Module({
@@ -53,12 +50,7 @@ import { LeaveTypeConfigsModule } from './leave-type-configs/leave-type-configs.
     DataTrackerModule,
     LeaveTypeConfigsModule,
   ],
-  controllers: [
-    AppController,
-    LeaveBalancesController,
-    HealthController,
-    LeaveTypeConfigsController,
-  ],
+  controllers: [AppController, HealthController],
   providers: [
     AppService,
     {
@@ -69,7 +61,6 @@ import { LeaveTypeConfigsModule } from './leave-type-configs/leave-type-configs.
       provide: APP_GUARD,
       useClass: RolesGuard,
     },
-    LeaveTypeConfigsService,
   ],
 })
 export class AppModule {}
