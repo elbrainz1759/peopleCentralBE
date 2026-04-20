@@ -9,15 +9,15 @@ import {
 
 export class CreateLeaveTypeConfigDto {
   @IsInt()
-  leaveTypeId: string = '';
+  leaveTypeId!: string;
 
   @IsString()
   @IsNotEmpty()
-  country: string = '';
+  country!: string;
 
   @IsNumber()
   @Min(0)
-  annualHours: number = 0;
+  annualHours!: number;
 
   @IsOptional()
   @IsNumber()
