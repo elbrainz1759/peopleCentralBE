@@ -33,6 +33,8 @@ export class LeaveTypeConfigsService {
   async create(dto: CreateLeaveTypeConfigDto): Promise<LeaveTypeConfig> {
     const conn = await this.pool.getConnection();
 
+    console.log('Creating leave type config with data:', dto); // Debug log
+
     try {
       // Verify leave type exists
       const [ltRows] = await conn.query<mysql.RowDataPacket[]>(
