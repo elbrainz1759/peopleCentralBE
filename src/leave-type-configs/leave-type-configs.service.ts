@@ -93,7 +93,7 @@ export class LeaveTypeConfigsService {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ltcc.*, lt.name AS leave_type_name
          FROM leave_type_country_config ltcc
-         LEFT JOIN leave_types lt ON lt.id = ltcc.leave_type_id
+         LEFT JOIN leave_types lt ON lt.unique_id = ltcc.leave_type_id
          ORDER BY lt.name ASC, ltcc.country ASC`,
       );
       return rows as LeaveTypeConfig[];
