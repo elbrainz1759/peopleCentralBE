@@ -1,5 +1,4 @@
 import {
-  IsInt,
   IsString,
   IsNotEmpty,
   IsNumber,
@@ -8,7 +7,7 @@ import {
 } from 'class-validator';
 
 export class CreateLeaveTypeConfigDto {
-  @IsInt()
+  @IsString()
   leaveTypeId!: string;
 
   @IsString()
