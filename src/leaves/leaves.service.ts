@@ -79,7 +79,6 @@ export class LeavesService {
     const country = staffRows[0].country as string;
 
     // 2. Get country-specific policy for this leave type
-    console.log(leaveTypeId, country);
     const [configRows] = await conn.query<mysql.RowDataPacket[]>(
       `SELECT annual_hours, monthly_accrual_hours
        FROM leave_type_country_config
@@ -362,9 +361,12 @@ export class LeavesService {
         );
       }
 
-      await conn.query(`UPDATE leaves SET status = 'Reviewed' WHERE id = ?`, [
-        id,
-      ]);
+      const reviewedBy = 'HR System';
+
+      await conn.query(
+        `UPDATE leaves SET status = 'Reviewed', reviewed_by = ?, date_reviewed = NOW() WHERE id = ?`,
+        [reviewedBy, id],
+      );
 
       return this.findOne(id);
     } catch (err) {
@@ -403,6 +405,8 @@ export class LeavesService {
         );
       }
 
+      console.log('Approving leave:', leave);
+
       // Re-validate balance at time of approval (accrual-aware, read-only)
       const now = new Date();
       await this.validateAndComputeBalance(
@@ -420,6 +424,7 @@ export class LeavesService {
          WHERE staff_id = ? AND leave_type_id = ? AND year = ?`,
         [leave.staff_id, leave.leave_type_id, now.getFullYear()],
       );
+      console.log(leave.staff_id, leave.leave_type_id, now.getFullYear());
       if (!balanceRows.length) {
         throw new BadRequestException(
           'Leave balance record not found for current year',
@@ -430,7 +435,7 @@ export class LeavesService {
       await conn.beginTransaction();
 
       await conn.query(
-        `UPDATE leaves SET status = 'Approved', approved_by = ? WHERE id = ?`,
+        `UPDATE leaves SET status = 'Approved', approved_by = ?, date_approved = NOW() WHERE id = ?`,
         [approvedBy, id],
       );
 
