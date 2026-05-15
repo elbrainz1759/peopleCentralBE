@@ -79,6 +79,7 @@ export class LeavesService {
     const country = staffRows[0].country as string;
 
     // 2. Get country-specific policy for this leave type
+    console.log(leaveTypeId, country);
     const [configRows] = await conn.query<mysql.RowDataPacket[]>(
       `SELECT annual_hours, monthly_accrual_hours
        FROM leave_type_country_config
