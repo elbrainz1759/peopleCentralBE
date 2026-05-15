@@ -45,6 +45,19 @@ export class LeaveTypeConfigsService {
         );
       }
 
+      //verify country is not empty and exists in countries table
+      if (!dto.country) {
+        throw new BadRequestException('Country is required');
+      }
+      const [countryRows] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT unique_id FROM countries WHERE unique_id = ?',
+        [dto.country],
+      );
+      if (!countryRows.length) {
+        throw new BadRequestException(
+          `Country with id ${dto.country} not found`,
+        );
+      }
       // Enforce unique constraint with a friendly error before hitting the DB key
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
         'SELECT id FROM leave_type_country_config WHERE leave_type_id = ? AND country = ?',
