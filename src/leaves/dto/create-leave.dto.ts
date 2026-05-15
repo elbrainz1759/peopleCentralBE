@@ -11,32 +11,32 @@ import { Type } from 'class-transformer';
 export class LeaveDurationDto {
   @IsDateString()
   @IsNotEmpty()
-  startDate: string;
+  startDate: string = '';
 
   @IsDateString()
   @IsNotEmpty()
-  endDate: string;
+  endDate: string = '';
 }
 
 export class CreateLeaveDto {
   @IsInt()
   @IsNotEmpty()
-  staffId: number;
+  staffId: number = 0;
 
-  @IsInt()
+  @IsString()
   @IsNotEmpty()
-  leaveTypeId: number;
+  leaveTypeId: string = '';
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => LeaveDurationDto)
-  leaveDuration: LeaveDurationDto[];
+  leaveDuration: LeaveDurationDto[] = [];
 
   @IsString()
   @IsNotEmpty()
-  reason: string;
+  reason: string = '';
 
   @IsString()
   @IsNotEmpty()
-  handoverNote: string;
+  handoverNote: string = '';
 }

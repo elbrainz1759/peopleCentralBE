@@ -21,7 +21,7 @@ export interface Leave {
   id: number;
   unique_id: string;
   staff_id: number;
-  leave_type_id: number;
+  leave_type_id: string;
   reason: string;
   handover_note: string;
   total_hours: number;
@@ -63,7 +63,7 @@ export class LeavesService {
   private async validateAndComputeBalance(
     conn: mysql.PoolConnection,
     staffId: number,
-    leaveTypeId: number,
+    leaveTypeId: string,
     totalHours: number,
     currentYear: number,
     currentMonth: number, // 1–12
