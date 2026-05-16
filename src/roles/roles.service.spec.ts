@@ -6,7 +6,13 @@ describe('RolesService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [RolesService],
+      providers: [
+        RolesService,
+        {
+          provide: 'MYSQL_POOL',
+          useValue: {}, // mock mysql pool
+        },
+      ],
     }).compile();
 
     service = module.get<RolesService>(RolesService);
