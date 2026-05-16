@@ -44,13 +44,12 @@ describe('LeaveTypeConfigsService', () => {
 
     it('creates a config and returns the saved record', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[{ id: 1 }]])          // leave_types exists check
-        .mockResolvedValueOnce([[]])                    // no conflict
-        .mockResolvedValueOnce([{ insertId: 1 }])      // INSERT
-        // findOne internal call (separate connection)
-        .mockResolvedValueOnce([[savedRow]]);           // SELECT for findOne
+        .mockResolvedValueOnce([[{ id: 1 }]])                       // 1. leave_types exists
+        .mockResolvedValueOnce([[{ unique_id: 'Nigeria' }]])         // 2. countries exists
+        .mockResolvedValueOnce([[]])                                  // 3. no conflict
+        .mockResolvedValueOnce([{ insertId: 1 }])                   // 4. INSERT
+        .mockResolvedValueOnce([[savedRow]]);                        // 5. findOne SELECT
 
-      // findOne opens its own connection — mock getConnection again
       mockPool.getConnection
         .mockResolvedValueOnce(mockConn)   // create() connection
         .mockResolvedValueOnce(mockConn);  // findOne() connection
@@ -70,8 +69,9 @@ describe('LeaveTypeConfigsService', () => {
 
     it('throws ConflictException when config already exists for that leave type + country', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[{ id: 1 }]])    // leave type exists
-        .mockResolvedValueOnce([[{ id: 5 }]]);   // conflict found
+        .mockResolvedValueOnce([[{ id: 1 }]])                       // 1. leave type exists
+        .mockResolvedValueOnce([[{ unique_id: 'Nigeria' }]])         // 2. country exists
+        .mockResolvedValueOnce([[{ id: 5 }]]);                      // 3. conflict found
 
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
     });
@@ -83,10 +83,11 @@ describe('LeaveTypeConfigsService', () => {
         annualHours: 90,
       };
       mockConn.query
-        .mockResolvedValueOnce([[{ id: 2, unique_id: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([{ insertId: 2 }])
-        .mockResolvedValueOnce([[{ id: 2, monthly_accrual_hours: null }]]);
+        .mockResolvedValueOnce([[{ id: 2, unique_id: 'b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7' }]])  // 1. leave type
+        .mockResolvedValueOnce([[{ unique_id: 'Nigeria' }]])                                     // 2. country
+        .mockResolvedValueOnce([[]])                                                              // 3. no conflict
+        .mockResolvedValueOnce([{ insertId: 2 }])                                               // 4. INSERT
+        .mockResolvedValueOnce([[{ id: 2, monthly_accrual_hours: null }]]);                     // 5. findOne
 
       mockPool.getConnection
         .mockResolvedValueOnce(mockConn)
@@ -94,7 +95,7 @@ describe('LeaveTypeConfigsService', () => {
 
       await service.create(dtoNoAccrual);
 
-      const insertCall = mockConn.query.mock.calls[2];
+      const insertCall = mockConn.query.mock.calls[3]; // index 3 — after leave type, country, conflict checks
       expect(insertCall[1]).toContain(null); // monthlyAccrualHours → null
     });
 
