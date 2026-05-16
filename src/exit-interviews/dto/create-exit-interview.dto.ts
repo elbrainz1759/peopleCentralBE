@@ -12,79 +12,79 @@ import {
 export class CreateExitInterviewDto {
   @IsInt()
   @IsNotEmpty()
-  staffId: number;
+  staffId: number = 0;
 
   @IsString()
   @IsNotEmpty()
-  departmentId: string;
+  departmentId: string = '';
 
   @IsString()
   @IsNotEmpty()
-  supervisorId: string;
+  supervisorId: string = '';
 
   @IsDateString()
   @IsNotEmpty()
-  resignationDate: string;
+  resignationDate: string = '';
 
   @IsString()
   @IsNotEmpty()
-  reasonForLeaving: string;
+  reasonForLeaving: string = '';
 
   @IsNotEmpty()
   @IsString()
-  otherReason: string;
+  otherReason: string = '';
 
   @IsNotEmpty()
   @IsString()
-  programId: string;
+  programId: string = '';
 
   @IsNotEmpty()
   @IsString()
-  countryId: string;
+  countryId: string = '';
 
   @IsNotEmpty()
   @IsString()
-  locationId: string;
+  locationId: string = '';
 
   @IsNotEmpty()
   @IsString()
-  mostEnjoyed: string;
+  mostEnjoyed: string = '';
 
   @IsNotEmpty()
   @IsString()
-  companyImprovement: string;
+  companyImprovement: string = '';
 
   @IsNotEmpty()
   @IsString()
-  handoverNotes: string;
+  handoverNotes: string = '';
 
   @IsNotEmpty()
   @IsString()
-  newEmployer: string;
+  newEmployer: string = '';
 
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingCulture: number;
+  ratingCulture: number = 0;
 
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingJob: number;
+  ratingJob: number = 0;
 
   @IsInt()
   @Min(1)
   @Max(5)
-  ratingManager: number;
+  ratingManager: number = 0;
 
   @IsIn(['Yes', 'No', 'Maybe'])
-  wouldRecommend: string;
+  wouldRecommend: string = '';
 
   @IsOptional()
   @IsIn(['Employee', 'Supervisor', 'HR', 'Operations', 'Finance'])
-  stage: string;
+  stage: string = '';
 
   @IsOptional()
   @IsIn(['Pending', 'Approved', 'Rejected'])
-  status: string;
+  status: string = '';
 }

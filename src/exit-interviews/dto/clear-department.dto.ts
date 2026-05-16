@@ -1,17 +1,17 @@
 import { IsString, IsIn, IsArray, IsInt, IsOptional } from 'class-validator';
 
 export class ClearDepartmentDto {
-  @IsIn(['Operations', 'Finance'])
-  department: 'Operations' | 'Finance';
+  @IsIn(['Operations', 'Finance', 'HR'])
+  department: 'Operations' | 'Finance' | 'HR' = 'HR';
 
   @IsArray()
   @IsInt({ each: true })
-  checkListItemIds: number[];
+  checkListItemIds: number[] = [];
 
   @IsString()
-  clearedBy: string;
+  clearedBy: string = '';
 
   @IsOptional()
   @IsString()
-  notes?: string;
+  notes?: string = '';
 }
