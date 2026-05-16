@@ -17,6 +17,7 @@ export interface Role {
   id: number;
   unique_id: string;
   name: string;
+  description: string;
   created_by: string;
   created_at: Date;
 }
@@ -56,9 +57,9 @@ export class RolesService {
       const created_by: string = 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO roles (unique_id, name, created_by)
-         VALUES (?, ?, ?)`,
-        [unique_id, dto.name, created_by],
+        `INSERT INTO roles (unique_id, name, description, created_by)
+         VALUES (?, ?, ?, ?)`,
+        [unique_id, dto.name, dto.description, created_by],
       );
 
       return this.findOne(result.insertId);

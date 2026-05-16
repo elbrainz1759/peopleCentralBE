@@ -4,4 +4,8 @@ export class CreateRoleDto {
   @IsString()
   @IsNotEmpty()
   name: string = '';
+
+  @IsString()
+  @IsNotEmpty()
+  description: string = '';
 }
