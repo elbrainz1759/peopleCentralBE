@@ -10,11 +10,25 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { DepartmentsService } from './departments.service';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
+
+interface AuthenticatedRequest extends Request {
+  user?: {
+    email: string;
+    role: string;
+    unique_id: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    staff_id?: number | null;
+  };
+}
+
 @Controller('departments')
 export class DepartmentsController {
   constructor(private readonly departmentsService: DepartmentsService) {}
@@ -22,8 +36,9 @@ export class DepartmentsController {
   // POST /departments
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateDepartmentDto) {
-    return this.departmentsService.create(dto);
+  create(@Body() dto: CreateDepartmentDto, @Req() req: AuthenticatedRequest) {
+    const createdBy: string = req.user?.email ?? 'System';
+    return this.departmentsService.create(dto, createdBy);
   }
 
   // GET /departments?page=1&limit=10&search=keyword

@@ -38,7 +38,10 @@ export class DepartmentsService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /departments
-  async create(dto: CreateDepartmentDto): Promise<Department> {
+  async create(
+    dto: CreateDepartmentDto,
+    createdBy: string = 'System',
+  ): Promise<Department> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
@@ -52,12 +55,11 @@ export class DepartmentsService {
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
-      const created_by: string = 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO departments (unique_id, name, created_by)
          VALUES (?, ?, ?)`,
-        [unique_id, dto.name, created_by],
+        [unique_id, dto.name, createdBy],
       );
 
       return this.findOne(result.insertId);
