@@ -3,196 +3,330 @@ import {
   ConflictException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { DepartmentsController } from './departments.controller';
+import { DepartmentsService } from './departments.service';
 
-describe('DepartmentsController', () => {
-  let controller: DepartmentsController;
-  const mockService: any = {
-    create: jest.fn(),
-    findAll: jest.fn(),
-    findByUniqueId: jest.fn(),
-    findOne: jest.fn(),
-    update: jest.fn(),
-    remove: jest.fn(),
+describe('DepartmentsService', () => {
+  let service: DepartmentsService;
+  const mockPool: any = { getConnection: jest.fn() };
+  const mockConn: any = {
+    query: jest.fn(),
+    execute: jest.fn(),
+    release: jest.fn(),
   };
-
-  // Minimal mock request helper — pass a user email or leave undefined
-  const mockReq = (email?: string) =>
-    ({ user: email ? { email } : undefined } as any);
 
   beforeEach(() => {
     jest.resetAllMocks();
-    controller = new DepartmentsController(mockService);
+    mockPool.getConnection.mockResolvedValue(mockConn);
+    mockConn.release.mockResolvedValue(undefined);
+    service = new DepartmentsService(mockPool as any);
   });
 
   it('should be defined', () => {
-    expect(controller).toBeDefined();
+    expect(service).toBeDefined();
   });
 
   // -------------------------------------------------------------------------
   describe('create', () => {
-    it('proxies to service with authenticated user email as createdBy', async () => {
-      const dto: any = { name: 'Engineering' };
-      const created = { id: 1, name: 'Engineering', created_by: 'john@example.com' };
-      mockService.create.mockResolvedValue(created);
+    const dto: any = { name: 'Engineering' };
+    const savedRow = {
+      id: 1,
+      unique_id: 'abc123',
+      name: 'Engineering',
+      created_by: 'admin@example.com',
+      created_at: new Date(),
+    };
 
-      const result = await controller.create(dto, mockReq('john@example.com'));
+    it('creates a department and returns the saved record', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[]])                      // no conflict
+        .mockResolvedValueOnce([{ insertId: 1 }])        // INSERT
+        .mockResolvedValueOnce([[savedRow]]);             // findOne SELECT
 
-      expect(mockService.create).toHaveBeenCalledWith(dto, 'john@example.com');
-      expect(result).toEqual(created);
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)   // create() connection
+        .mockResolvedValueOnce(mockConn);  // findOne() connection
+
+      const result = await service.create(dto, 'admin@example.com');
+
+      expect(result).toEqual(savedRow);
+      expect(mockConn.release).toHaveBeenCalledTimes(2);
+
+      const insertCall = mockConn.query.mock.calls[1];
+      expect(insertCall[1]).toContain('admin@example.com');
     });
 
-    it('falls back to "System" when no user on request', async () => {
-      const dto: any = { name: 'HR' };
-      const created = { id: 2, name: 'HR', created_by: 'System' };
-      mockService.create.mockResolvedValue(created);
+    it('defaults createdBy to "System" when not provided', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([{ insertId: 2 }])
+        .mockResolvedValueOnce([[{ ...savedRow, created_by: 'System' }]]);
 
-      const result = await controller.create(dto, mockReq());
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)
+        .mockResolvedValueOnce(mockConn);
 
-      expect(mockService.create).toHaveBeenCalledWith(dto, 'System');
-      expect(result).toEqual(created);
+      await service.create(dto);
+
+      const insertCall = mockConn.query.mock.calls[1];
+      expect(insertCall[1]).toContain('System');
+    });
+
+    it('throws ConflictException when department name already exists', async () => {
+      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]); // conflict found
+
+      await expect(service.create(dto, 'admin@example.com')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockConn.release).toHaveBeenCalled();
+    });
+
+    it('throws InternalServerErrorException on unexpected db error', async () => {
+      mockConn.query.mockRejectedValueOnce(new Error('db failure'));
+
+      await expect(service.create(dto, 'admin@example.com')).rejects.toThrow(
+        InternalServerErrorException,
+      );
+      expect(mockConn.release).toHaveBeenCalled();
     });
   });
 
   // -------------------------------------------------------------------------
   describe('findAll', () => {
-    it('returns paginated result from service', async () => {
-      const response = {
-        data: [{ id: 1, name: 'Engineering' }],
-        meta: { total: 1, page: 1, limit: 10, last_page: 1 },
-      };
-      mockService.findAll.mockResolvedValue(response);
+    const rows = [
+      { id: 1, name: 'Engineering' },
+      { id: 2, name: 'HR' },
+    ];
 
-      const result = await controller.findAll({ page: 1, limit: 10 });
+    it('returns paginated result with defaults (page=1, limit=10)', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[{ total: 2 }]])   // COUNT
+        .mockResolvedValueOnce([rows]);             // SELECT
 
-      expect(mockService.findAll).toHaveBeenCalledWith({ page: 1, limit: 10 });
-      expect(result).toEqual(response);
-    });
+      const result = await service.findAll({});
 
-    it('passes search query to service', async () => {
-      const response = {
-        data: [{ id: 1, name: 'Engineering' }],
-        meta: { total: 1, page: 1, limit: 10, last_page: 1 },
-      };
-      mockService.findAll.mockResolvedValue(response);
-
-      await controller.findAll({ page: 1, limit: 10, search: 'Eng' });
-
-      expect(mockService.findAll).toHaveBeenCalledWith({
-        page: 1,
-        limit: 10,
-        search: 'Eng',
+      expect(result).toEqual({
+        data: rows,
+        meta: { total: 2, page: 1, limit: 10, last_page: 1 },
       });
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  describe('findByUniqueId', () => {
-    it('passes uniqueId to service and returns department', async () => {
-      const dept = { id: 1, unique_id: 'abc123', name: 'Engineering' };
-      mockService.findByUniqueId.mockResolvedValue(dept);
-
-      const result = await controller.findByUniqueId('abc123');
-
-      expect(mockService.findByUniqueId).toHaveBeenCalledWith('abc123');
-      expect(result).toEqual(dept);
+      expect(mockConn.release).toHaveBeenCalled();
     });
 
-    it('propagates NotFoundException from service', async () => {
-      mockService.findByUniqueId.mockRejectedValue(
-        new NotFoundException('Department with unique_id "bad" not found'),
-      );
+    it('applies page and limit correctly', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[{ total: 25 }]])
+        .mockResolvedValueOnce([rows]);
 
-      await expect(controller.findByUniqueId('bad')).rejects.toThrow(
-        NotFoundException,
+      const result = await service.findAll({ page: 2, limit: 5 });
+
+      expect(result.meta).toEqual({
+        total: 25,
+        page: 2,
+        limit: 5,
+        last_page: 5,
+      });
+
+      // OFFSET should be (2-1)*5 = 5
+      const selectCall = mockConn.query.mock.calls[1];
+      expect(selectCall[1]).toContain(5); // offset
+    });
+
+    it('applies search filter to both COUNT and SELECT queries', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[{ total: 1 }]])
+        .mockResolvedValueOnce([[{ id: 1, name: 'Engineering' }]]);
+
+      await service.findAll({ search: 'Eng' });
+
+      const countSql = mockConn.query.mock.calls[0][0] as string;
+      const selectSql = mockConn.query.mock.calls[1][0] as string;
+
+      expect(countSql).toContain('WHERE name LIKE ? OR unique_id LIKE ?');
+      expect(selectSql).toContain('WHERE name LIKE ? OR unique_id LIKE ?');
+
+      const countParams = mockConn.query.mock.calls[0][1];
+      expect(countParams).toEqual(['%Eng%', '%Eng%']);
+    });
+
+    it('returns empty data when no departments exist', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[{ total: 0 }]])
+        .mockResolvedValueOnce([[]]);
+
+      const result = await service.findAll({});
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+      expect(result.meta.last_page).toBe(0);
+    });
+
+    it('throws InternalServerErrorException on db error', async () => {
+      mockConn.query.mockRejectedValueOnce(new Error('fail'));
+
+      await expect(service.findAll({})).rejects.toThrow(
+        InternalServerErrorException,
       );
+      expect(mockConn.release).toHaveBeenCalled();
     });
   });
 
   // -------------------------------------------------------------------------
   describe('findOne', () => {
-    it('passes parsed id to service and returns department', async () => {
-      const dept = { id: 7, name: 'Finance' };
-      mockService.findOne.mockResolvedValue(dept);
+    const row = { id: 1, name: 'Engineering' };
 
-      const result = await controller.findOne(7);
+    it('returns the department when found', async () => {
+      mockConn.query.mockResolvedValueOnce([[row]]);
 
-      expect(mockService.findOne).toHaveBeenCalledWith(7);
-      expect(result).toEqual(dept);
+      const result = await service.findOne(1);
+
+      expect(result).toEqual(row);
+      const [sql, params] = mockConn.query.mock.calls[0];
+      expect(sql).toContain('WHERE id = ?');
+      expect(params).toEqual([1]);
     });
 
-    it('propagates NotFoundException from service', async () => {
-      mockService.findOne.mockRejectedValue(
-        new NotFoundException('Department with id 999 not found'),
-      );
+    it('throws NotFoundException when department does not exist', async () => {
+      mockConn.query.mockResolvedValueOnce([[]]);
 
-      await expect(controller.findOne(999)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(999)).rejects.toThrow(NotFoundException);
+      expect(mockConn.release).toHaveBeenCalled();
+    });
+
+    it('throws InternalServerErrorException on db error', async () => {
+      mockConn.query.mockRejectedValueOnce(new Error('fail'));
+
+      await expect(service.findOne(1)).rejects.toThrow(
+        InternalServerErrorException,
+      );
+      expect(mockConn.release).toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe('findByUniqueId', () => {
+    const row = { id: 1, unique_id: 'abc123', name: 'Engineering' };
+
+    it('returns the department when found', async () => {
+      mockConn.query.mockResolvedValueOnce([[row]]);
+
+      const result = await service.findByUniqueId('abc123');
+
+      expect(result).toEqual(row);
+      const [sql, params] = mockConn.query.mock.calls[0];
+      expect(sql).toContain('WHERE unique_id = ?');
+      expect(params).toEqual(['abc123']);
+    });
+
+    it('throws NotFoundException when unique_id does not exist', async () => {
+      mockConn.query.mockResolvedValueOnce([[]]);
+
+      await expect(service.findByUniqueId('nope')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockConn.release).toHaveBeenCalled();
+    });
+
+    it('throws InternalServerErrorException on db error', async () => {
+      mockConn.query.mockRejectedValueOnce(new Error('fail'));
+
+      await expect(service.findByUniqueId('abc123')).rejects.toThrow(
+        InternalServerErrorException,
+      );
+      expect(mockConn.release).toHaveBeenCalled();
     });
   });
 
   // -------------------------------------------------------------------------
   describe('update', () => {
-    it('passes id and dto to service and returns updated department', async () => {
-      const dto: any = { name: 'Ops' };
-      const updated = { id: 1, name: 'Ops' };
-      mockService.update.mockResolvedValue(updated);
+    const existingRow = { id: 1, name: 'Engineering' };
 
-      const result = await controller.update(1, dto);
+    it('updates provided fields and returns the updated record', async () => {
+      const updatedRow = { ...existingRow, name: 'Ops' };
 
-      expect(mockService.update).toHaveBeenCalledWith(1, dto);
-      expect(result).toEqual(updated);
+      mockConn.query
+        .mockResolvedValueOnce([[existingRow]])   // SELECT current
+        .mockResolvedValueOnce([[updatedRow]]);   // findOne SELECT
+
+      mockConn.execute.mockResolvedValueOnce([{}]); // UPDATE
+
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)   // update() connection
+        .mockResolvedValueOnce(mockConn);  // findOne() connection
+
+      const result = await service.update(1, { name: 'Ops' });
+
+      expect(result.name).toBe('Ops');
+
+      const updateSql = mockConn.execute.mock.calls[0][0] as string;
+      expect(updateSql).toContain('name = ?');
+      expect(mockConn.release).toHaveBeenCalledTimes(2);
     });
 
-    it('propagates NotFoundException from service', async () => {
-      mockService.update.mockRejectedValue(
-        new NotFoundException('Department with id 999 not found'),
-      );
+    it('returns current record unchanged when dto has no fields', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[existingRow]])   // SELECT current
+        .mockResolvedValueOnce([[existingRow]]);  // findOne SELECT
 
-      await expect(controller.update(999, { name: 'X' })).rejects.toThrow(
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)
+        .mockResolvedValueOnce(mockConn);
+
+      const result = await service.update(1, {});
+
+      expect(mockConn.execute).not.toHaveBeenCalled();
+      expect(result).toEqual(existingRow);
+    });
+
+    it('throws NotFoundException when department does not exist', async () => {
+      mockConn.query.mockResolvedValueOnce([[]]); // not found
+
+      await expect(service.update(999, { name: 'X' })).rejects.toThrow(
         NotFoundException,
       );
+      expect(mockConn.release).toHaveBeenCalled();
     });
 
-    it('propagates ConflictException from service', async () => {
-      mockService.update.mockRejectedValue(
-        new ConflictException('Department with name "Ops" already exists'),
-      );
+    it('throws InternalServerErrorException on unexpected db error', async () => {
+      mockConn.query.mockRejectedValueOnce(new Error('fail'));
 
-      await expect(controller.update(1, { name: 'Ops' })).rejects.toThrow(
-        ConflictException,
+      await expect(service.update(1, { name: 'X' })).rejects.toThrow(
+        InternalServerErrorException,
       );
+      expect(mockConn.release).toHaveBeenCalled();
     });
   });
 
   // -------------------------------------------------------------------------
   describe('remove', () => {
-    it('passes id to service and returns success message', async () => {
-      mockService.remove.mockResolvedValue({
-        message: 'Department 1 deleted successfully',
-      });
+    it('deletes the department and returns confirmation message', async () => {
+      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]); // exists check
+      mockConn.execute.mockResolvedValueOnce([{}]);         // DELETE
 
-      const result = await controller.remove(1);
+      const result = await service.remove(1);
 
-      expect(mockService.remove).toHaveBeenCalledWith(1);
       expect(result).toEqual({ message: 'Department 1 deleted successfully' });
+
+      const selectCall = mockConn.query.mock.calls[0];
+      expect(selectCall[0]).toContain('WHERE id = ?');
+      expect(selectCall[1]).toEqual([1]);
+
+      const deleteSql = mockConn.execute.mock.calls[0][0] as string;
+      expect(deleteSql).toContain('DELETE FROM departments WHERE id = ?');
     });
 
-    it('propagates NotFoundException from service', async () => {
-      mockService.remove.mockRejectedValue(
-        new NotFoundException('Department with id 999 not found'),
-      );
+    it('throws NotFoundException when department does not exist', async () => {
+      mockConn.query.mockResolvedValueOnce([[]]); // not found
 
-      await expect(controller.remove(999)).rejects.toThrow(NotFoundException);
+      await expect(service.remove(999)).rejects.toThrow(NotFoundException);
+      expect(mockConn.release).toHaveBeenCalled();
     });
 
-    it('propagates InternalServerErrorException from service', async () => {
-      mockService.remove.mockRejectedValue(
-        new InternalServerErrorException('db error'),
-      );
+    it('throws InternalServerErrorException on unexpected db error', async () => {
+      mockConn.query.mockRejectedValueOnce(new Error('fail'));
 
-      await expect(controller.remove(1)).rejects.toThrow(
+      await expect(service.remove(1)).rejects.toThrow(
         InternalServerErrorException,
       );
+      expect(mockConn.release).toHaveBeenCalled();
     });
   });
 });
