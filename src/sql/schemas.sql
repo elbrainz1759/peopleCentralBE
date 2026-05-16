@@ -76,6 +76,19 @@ CREATE TABLE `departments` (
 DEFAULT CHARSET=utf8mb4 
 COLLATE=utf8mb4_0900_ai_ci;
 
+CREATE TABLE `roles` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `unique_id` VARCHAR(255) NOT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `created_by` VARCHAR(255) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_id_unique` (`unique_id`),
+  KEY `name_index` (`name`)
+) ENGINE=InnoDB 
+DEFAULT CHARSET=utf8mb4 
+COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `locations` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `unique_id` VARCHAR(255) NOT NULL,
