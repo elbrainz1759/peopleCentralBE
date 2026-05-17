@@ -10,24 +10,24 @@ import {
 
 export class CreateDataTrackerDto {
   @IsString()
-  title: string;
+  title: string = '';
 
   @IsOptional()
   @IsString()
-  description?: string;
+  description?: string = '';
 
   @IsDateString()
-  start_date: string;
+  start_date: Date = new Date();
 
   @IsDateString()
-  end_date: string;
+  end_date: Date = new Date();
 
   @IsArray()
   @IsEmail({}, { each: true })
-  recipients: string[];
+  recipients: string[] = [];
 
   @IsArray()
   @IsInt({ each: true })
   @Min(1, { each: true })
-  notification_periods: number[];
+  notification_periods: number[] = [];
 }
