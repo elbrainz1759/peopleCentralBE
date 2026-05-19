@@ -115,7 +115,7 @@ export class AuthService {
 
     // Validate role exists
     const [roleRows] = await this.pool.query<UserRow[]>(
-      'SELECT name FROM roles WHERE role = ?',
+      'SELECT name FROM roles WHERE name = ?',
       [role],
     );
     if (roleRows.length === 0) {
