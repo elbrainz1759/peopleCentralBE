@@ -17,6 +17,7 @@ import {
   UpdateProgramDto,
   PaginationQueryDto,
 } from './dto/program.dto';
+import { Public } from 'src/decorators/public.decorator';
 
 @Controller('programs')
 export class ProgramsController {
@@ -30,6 +31,7 @@ export class ProgramsController {
   }
 
   // GET /programs?page=1&limit=10&search=keyword
+  @Public()
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     return this.programsService.findAll(query);

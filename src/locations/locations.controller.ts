@@ -15,6 +15,7 @@ import { LocationsService } from './locations.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { Public } from 'src/decorators/public.decorator';
 
 @Controller('locations')
 export class LocationsController {
@@ -28,6 +29,7 @@ export class LocationsController {
   }
 
   // GET /locations?page=1&limit=10&search=keyword
+  @Public()
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     return this.locationsService.findAll(query);

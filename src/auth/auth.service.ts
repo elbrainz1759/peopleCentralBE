@@ -101,10 +101,16 @@ export class AuthService {
     }
   }
 
-  async approveUser(email: string, role: string = 'User') {
+  async approveUser(
+    email: string,
+    role: string = 'User',
+    supervisorEmail: string,
+  ) {
     // Validate inputs
-    if (!email || !role) {
-      throw new BadRequestException('Email and role are required');
+    if (!email || !role || !supervisorEmail) {
+      throw new BadRequestException(
+        'Email, role, and supervisor email are required',
+      );
     }
 
     // Validate role exists
@@ -114,6 +120,17 @@ export class AuthService {
     );
     if (roleRows.length === 0) {
       throw new BadRequestException('Invalid role');
+    }
+
+    //validate supervisor exists and is active
+    const [supRows] = await this.pool.query<UserRow[]>(
+      'SELECT unique_id FROM employee WHERE email = ? AND status = "Active"',
+      [supervisorEmail],
+    );
+    if (supRows.length === 0) {
+      throw new BadRequestException(
+        'Invalid supervisor email or supervisor is not active',
+      );
     }
 
     const connection = await this.pool.getConnection();
@@ -152,8 +169,8 @@ export class AuthService {
 
       // Activate employee
       await connection.query<mysql.ResultSetHeader>(
-        'UPDATE employee SET status = "Active" WHERE email = ?',
-        [email],
+        'UPDATE employee SET status = "Active", supervisor=? WHERE email = ?',
+        [supRows[0].unique_id, email],
       );
 
       await connection.commit();

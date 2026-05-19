@@ -7,6 +7,7 @@ import { ResetPasswordDto } from './dto/resetPassword.dto';
 import { RequestRefreshDto } from './dto/refresh.dto';
 import { Public } from '../decorators/public.decorator';
 import { RequestMetadata } from '../decorators/requestMetadata.decorator';
+import { ApproveUserDto } from './dto/approveUser.dto';
 interface AuthenticatedRequest extends Request {
   user: {
     userId: string;
@@ -31,8 +32,12 @@ export class AuthController {
   }
 
   @Post('approve')
-  approveUser(@Body() dto: RegisterDto) {
-    return this.authService.approveUser(dto.email, dto.role);
+  approveUser(@Body() dto: ApproveUserDto) {
+    return this.authService.approveUser(
+      dto.email,
+      dto.role,
+      dto.supervisorEmail,
+    );
   }
 
   @Public()

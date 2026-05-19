@@ -15,6 +15,7 @@ import { CountriesService } from './countries.service';
 import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { Public } from 'src/decorators/public.decorator';
 
 @Controller('countries')
 export class CountriesController {
@@ -28,6 +29,7 @@ export class CountriesController {
   }
 
   // GET /countries?page=1&limit=10&search=keyword
+  @Public()
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     return this.countriesService.findAll(query);

@@ -17,6 +17,7 @@ import { DepartmentsService } from './departments.service';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { Public } from 'src/decorators/public.decorator';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -42,6 +43,7 @@ export class DepartmentsController {
   }
 
   // GET /departments?page=1&limit=10&search=keyword
+  @Public()
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     return this.departmentsService.findAll(query);
