@@ -53,7 +53,7 @@ export class EmployeeService {
 
     const unique_id: string = randomBytes(16).toString('hex');
 
-    const created_by: string = 'System';
+    const created_by: string = 'System - Self';
 
     const checks: Promise<void>[] = [];
 

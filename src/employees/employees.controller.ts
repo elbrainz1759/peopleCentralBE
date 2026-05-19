@@ -28,7 +28,6 @@ export class EmployeeController {
     return this.employeeService.create(createEmployeeDto);
   }
 
-  @Public()
   @Get()
   findAll(@Query() query: FindEmployeesDto) {
     return this.employeeService.findAll(query);
