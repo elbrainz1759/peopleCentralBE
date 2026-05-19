@@ -101,6 +101,79 @@ export class AuthService {
     }
   }
 
+  async approveUser(email: string, role: string = 'User') {
+    // Validate inputs
+    if (!email || !role) {
+      throw new BadRequestException('Email and role are required');
+    }
+
+    // Validate role exists
+    const [roleRows] = await this.pool.query<UserRow[]>(
+      'SELECT name FROM roles WHERE role = ?',
+      [role],
+    );
+    if (roleRows.length === 0) {
+      throw new BadRequestException('Invalid role');
+    }
+
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      // Check employee exists
+      const [empRows] = await connection.query<UserRow[]>(
+        'SELECT id FROM employee WHERE email = ?',
+        [email],
+      );
+      if (empRows.length === 0) {
+        throw new BadRequestException('No employee found with this email');
+      }
+
+      // Check user doesn't already exist
+      const [userRows] = await connection.query<UserRow[]>(
+        'SELECT id FROM users WHERE email = ?',
+        [email],
+      );
+      if (userRows.length > 0) {
+        throw new BadRequestException('User already exists for this email');
+      }
+
+      // Generate credentials
+      const password = randomBytes(16).toString('hex').slice(0, 12);
+      const hashed = await bcrypt.hash(password, 10);
+      const unique_id = randomBytes(16).toString('hex');
+
+      // Insert user
+      await connection.query<mysql.ResultSetHeader>(
+        'INSERT INTO users (email, password, role, unique_id) VALUES (?, ?, ?, ?)',
+        [email, hashed, role, unique_id],
+      );
+
+      // Activate employee
+      await connection.query<mysql.ResultSetHeader>(
+        'UPDATE employee SET status = "Active" WHERE email = ?',
+        [email],
+      );
+
+      await connection.commit();
+
+      // TODO: replace with actual email service
+      console.log(`Email sent to ${email} with password: ${password}`);
+
+      return { message: 'User approved successfully', unique_id, password };
+    } catch (err) {
+      await connection.rollback();
+
+      if (err instanceof BadRequestException) throw err;
+
+      console.error('approveUser error:', err);
+      throw new BadRequestException('Failed to approve user');
+    } finally {
+      connection.release();
+    }
+  }
+
   async login(email: string, password: string, metadata: RequestMetadata) {
     try {
       const [rows] = await this.pool.query<UserRow[]>(

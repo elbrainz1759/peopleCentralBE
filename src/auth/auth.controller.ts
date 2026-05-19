@@ -30,6 +30,11 @@ export class AuthController {
     return this.authService.register(dto.email, dto.password, dto.role);
   }
 
+  @Post('approve')
+  approveUser(@Body() dto: RegisterDto) {
+    return this.authService.approveUser(dto.email, dto.role);
+  }
+
   @Public()
   @Post('login')
   login(@Body() dto: LoginDto, @RequestMetadata() metadata: RequestMetadata) {
