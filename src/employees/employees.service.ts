@@ -78,7 +78,7 @@ export class EmployeeService {
       try {
         const [result] = await this.pool.query<mysql.ResultSetHeader>(
           `INSERT INTO employee (status, unique_id, designation, first_name, last_name, staff_id, email, location, department, program, country, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             'Pending',
             unique_id,
