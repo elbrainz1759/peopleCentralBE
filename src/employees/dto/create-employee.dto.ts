@@ -33,10 +33,6 @@ export class CreateEmployeeDto {
 
   @IsString()
   @IsNotEmpty()
-  supervisorId: string = '';
-
-  @IsString()
-  @IsNotEmpty()
   programId: string = '';
 
   @IsString()

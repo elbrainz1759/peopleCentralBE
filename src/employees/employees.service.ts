@@ -26,7 +26,6 @@ export interface EmployeeRow extends mysql.RowDataPacket {
   location_name: string | null;
   department_name: string | null;
   program_name: string | null;
-  supervisor_name: string | null;
 }
 
 interface CountResult extends mysql.RowDataPacket {
@@ -45,7 +44,6 @@ export class EmployeeService {
       email,
       locationId,
       departmentId,
-      supervisorId,
       programId,
       countryId,
       designation,
@@ -74,18 +72,13 @@ export class EmployeeService {
           ensureExists(this.pool, 'locations', locationId, 'Location'),
         );
       }
-      if (supervisorId) {
-        checks.push(
-          ensureExists(this.pool, 'employee', supervisorId, 'Supervisor'),
-        );
-      }
 
       await Promise.all(checks);
 
       try {
         const [result] = await this.pool.query<mysql.ResultSetHeader>(
-          `INSERT INTO employee (status, unique_id, designation, first_name, last_name, staff_id, email, location, department, supervisor, program, country, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO employee (status, unique_id, designation, first_name, last_name, staff_id, email, location, department, program, country, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             'Pending',
             unique_id,
@@ -96,7 +89,6 @@ export class EmployeeService {
             email,
             locationId,
             departmentId,
-            supervisorId,
             programId,
             countryId,
             created_by,
