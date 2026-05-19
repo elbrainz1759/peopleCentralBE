@@ -4,42 +4,46 @@ import { IsString, IsEmail, IsNotEmpty, IsInt } from 'class-validator';
 export class CreateEmployeeDto {
   @IsString()
   @IsNotEmpty()
-  firstName: string;
+  firstName: string = '';
 
   @IsString()
   @IsNotEmpty()
-  lastName: string;
+  lastName: string = '';
 
   @IsString()
   @IsNotEmpty()
-  designation: string;
+  designation: string = '';
+
+  @IsString()
+  @IsNotEmpty()
+  status: string = '';
 
   @IsInt()
   @IsNotEmpty()
   @Type(() => Number)
-  staffId: number;
+  staffId: number = 0;
 
   @IsEmail()
   @IsNotEmpty()
-  email: string;
+  email: string = '';
 
   @IsString()
   @IsNotEmpty()
-  locationId: string;
+  locationId: string = '';
 
   @IsString()
   @IsNotEmpty()
-  supervisorId: string;
+  supervisorId: string = '';
 
   @IsString()
   @IsNotEmpty()
-  programId: string;
+  programId: string = '';
 
   @IsString()
   @IsNotEmpty()
-  departmentId: string;
+  departmentId: string = '';
 
   @IsString()
   @IsNotEmpty()
-  countryId: string;
+  countryId: string = '';
 }

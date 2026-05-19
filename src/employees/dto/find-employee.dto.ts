@@ -12,7 +12,11 @@ export class FindEmployeesDto {
 
   @IsOptional()
   @IsString()
-  designation: string;
+  designation: string = '';
+
+  @IsOptional()
+  @IsString()
+  status: string = '';
 
   @IsOptional()
   @IsString()
