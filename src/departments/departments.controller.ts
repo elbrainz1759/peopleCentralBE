@@ -17,7 +17,7 @@ import { DepartmentsService } from './departments.service';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
-import { Public } from 'src/decorators/public.decorator';
+import { Public } from '../decorators/public.decorator';
 
 interface AuthenticatedRequest extends Request {
   user?: {

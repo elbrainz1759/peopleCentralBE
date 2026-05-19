@@ -17,7 +17,7 @@ import {
   UpdateProgramDto,
   PaginationQueryDto,
 } from './dto/program.dto';
-import { Public } from 'src/decorators/public.decorator';
+import { Public } from '../decorators/public.decorator';
 
 @Controller('programs')
 export class ProgramsController {

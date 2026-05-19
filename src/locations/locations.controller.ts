@@ -15,7 +15,7 @@ import { LocationsService } from './locations.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
-import { Public } from 'src/decorators/public.decorator';
+import { Public } from '../decorators/public.decorator';
 
 @Controller('locations')
 export class LocationsController {
