@@ -9,7 +9,7 @@ import * as jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 import * as mysql from 'mysql2/promise';
 import { createHash } from 'crypto';
-import { MailService } from '../mail/mail.service.js';
+import { MailService } from '../mail/mail.service';
 
 interface UserRow extends mysql.RowDataPacket {
   id: number;
