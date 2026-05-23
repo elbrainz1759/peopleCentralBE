@@ -9,6 +9,7 @@ import * as jwt from 'jsonwebtoken';
 import { randomBytes } from 'crypto';
 import * as mysql from 'mysql2/promise';
 import { createHash } from 'crypto';
+import { MailService } from '../mail/mail.service.js';
 
 interface UserRow extends mysql.RowDataPacket {
   id: number;
@@ -50,7 +51,10 @@ interface RequestMetadata {
 
 @Injectable()
 export class AuthService {
-  constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
+  constructor(
+    @Inject('MYSQL_POOL') private readonly pool: mysql.Pool,
+    private mailService: MailService,
+  ) {}
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
@@ -175,8 +179,13 @@ export class AuthService {
 
       await connection.commit();
 
-      // TODO: replace with actual email service
-      console.log(`Email sent to ${email} with password: ${password}`);
+      await this.mailService.sendCaseNotification({
+        to: email,
+        subject: 'Welcome to PeopleCentral — Your Account is Ready',
+        subjectFull: 'Your Account Has Been Created',
+        message: `Your PeopleCentral account has been created successfully. Your temporary password is: ${password}. Please log in and change your password immediately`,
+        siteName: 'PeopleCentral',
+      });
 
       return { message: 'User approved successfully', unique_id, password };
     } catch (err) {
