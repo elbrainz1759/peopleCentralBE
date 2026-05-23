@@ -101,8 +101,6 @@ const DETAIL_JOINS = `
   LEFT JOIN programs p    ON p.unique_id = ei.program_id
 `;
 
-// ─── Service ───────────────────────────────────────────────────────────────────
-
 @Injectable()
 export class ExitInterviewService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
