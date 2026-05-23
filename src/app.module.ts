@@ -26,6 +26,8 @@ import { LeaveTypeConfigsModule } from './leave-type-configs/leave-type-configs.
 import { RolesService } from './roles/roles.service';
 import { RolesController } from './roles/roles.controller';
 import { RolesModule } from './roles/roles.module';
+import { MailService } from './mail/mail.service';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -53,6 +55,7 @@ import { RolesModule } from './roles/roles.module';
     DataTrackerModule,
     LeaveTypeConfigsModule,
     RolesModule,
+    MailModule,
   ],
   controllers: [AppController, HealthController, RolesController],
   providers: [
@@ -66,6 +69,7 @@ import { RolesModule } from './roles/roles.module';
       useClass: RolesGuard,
     },
     RolesService,
+    MailService,
   ],
 })
 export class AppModule {}
