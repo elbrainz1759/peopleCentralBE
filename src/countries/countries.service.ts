@@ -69,7 +69,6 @@ export class CountriesService {
     }
   }
 
-  // GET /countries
   async findAll(query: PaginationQueryDto): Promise<PaginatedResult<Country>> {
     const conn = await this.pool.getConnection();
     try {
@@ -78,25 +77,25 @@ export class CountriesService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = '';
+      let whereClause = 'WHERE status = "Active"';
 
       if (query.search) {
-        whereClause = 'WHERE name LIKE ? OR unique_id LIKE ?';
+        whereClause += ' AND (name LIKE ? OR unique_id LIKE ?)';
         const term = `%${query.search}%`;
         params.push(term, term);
       }
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM countries ${whereClause} AND status = "Active"`,
+        `SELECT COUNT(*) AS total FROM countries ${whereClause}`,
         params,
       );
 
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT * FROM countries ${whereClause} AND status = "Active"
-         ORDER BY created_at DESC
-         LIMIT ? OFFSET ?`,
+        `SELECT * FROM countries ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
 
