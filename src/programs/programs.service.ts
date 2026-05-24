@@ -12,6 +12,7 @@ import {
   PaginationQueryDto,
 } from './dto/program.dto';
 import { randomBytes } from 'crypto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ export class ProgramsService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /programs
-  async create(dto: CreateProgramDto): Promise<Program> {
+  async create(dto: CreateProgramDto, user: RequestUser): Promise<Program> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
@@ -57,7 +58,7 @@ export class ProgramsService {
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
-      const created_by: string = 'System';
+      const created_by: string = user.email;
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO programs (unique_id, name, fund_code, start_date, end_date, created_by)

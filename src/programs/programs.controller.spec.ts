@@ -1,8 +1,17 @@
+import { Test, TestingModule } from '@nestjs/testing';
 import { ProgramsController } from './programs.controller';
+import { ProgramsService } from './programs.service';
+import {
+  CreateProgramDto,
+  UpdateProgramDto,
+  PaginationQueryDto,
+} from './dto/program.dto';
 
 describe('ProgramsController', () => {
   let controller: ProgramsController;
-  const mockService: any = {
+  let service: ProgramsService;
+
+  const mockProgramsService = {
     create: jest.fn(),
     findAll: jest.fn(),
     findByUniqueId: jest.fn(),
@@ -11,48 +20,168 @@ describe('ProgramsController', () => {
     remove: jest.fn(),
   };
 
-  beforeEach(() => {
-    controller = new ProgramsController(mockService as any);
+  const mockUser = {
+    id: 1,
+    email: 'hr@mercycorps.org',
+    role: 'Admin',
+    unique_id: 'abc123',
+    first_name: 'HR',
+    last_name: 'User',
+  };
+
+  const mockRequest = {
+    user: mockUser,
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [ProgramsController],
+      providers: [
+        {
+          provide: ProgramsService,
+          useValue: mockProgramsService,
+        },
+      ],
+    }).compile();
+
+    controller = module.get<ProgramsController>(ProgramsController);
+    service = module.get<ProgramsService>(ProgramsService);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
 
-  it('create proxies to service', async () => {
-    const dto = { name: 'x' };
-    mockService.create.mockResolvedValue('ok');
-    expect(await controller.create(dto)).toBe('ok');
-    expect(mockService.create).toHaveBeenCalledWith(dto);
+  describe('create', () => {
+    it('should create a program', async () => {
+      const dto: CreateProgramDto = {
+        name: 'BEGE',
+        fundCode: 12345,
+        startDate: '2026-01-01',
+        endDate: '2026-12-31',
+      } as any;
+
+      const expectedResult = {
+        id: 1,
+        unique_id: 'program-uid-1',
+        name: 'BEGE',
+        fund_code: 12345,
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
+        created_by: mockUser.email,
+      };
+
+      mockProgramsService.create.mockResolvedValue(expectedResult);
+
+      const result = await controller.create(dto, mockRequest as any);
+
+      expect(result).toEqual(expectedResult);
+      expect(service.create).toHaveBeenCalledWith(dto, mockUser);
+    });
   });
 
-  it('findAll proxies to service', async () => {
-    const query = { page: 2 };
-    mockService.findAll.mockResolvedValue('list');
-    expect(await controller.findAll(query)).toBe('list');
+  describe('findAll', () => {
+    it('should return paginated programs', async () => {
+      const query: PaginationQueryDto = {
+        page: 1,
+        limit: 10,
+        search: 'BEGE',
+      } as any;
+
+      const expectedResult = {
+        data: [
+          {
+            id: 1,
+            name: 'BEGE',
+            fund_code: 12345,
+          },
+        ],
+        meta: {
+          total: 1,
+          page: 1,
+          limit: 10,
+          last_page: 1,
+        },
+      };
+
+      mockProgramsService.findAll.mockResolvedValue(expectedResult);
+
+      const result = await controller.findAll(query);
+
+      expect(result).toEqual(expectedResult);
+      expect(service.findAll).toHaveBeenCalledWith(query);
+    });
   });
 
-  it('findByUniqueId proxies to service', async () => {
-    mockService.findByUniqueId.mockResolvedValue('one');
-    expect(await controller.findByUniqueId('uid')).toBe('one');
-    expect(mockService.findByUniqueId).toHaveBeenCalledWith('uid');
+  describe('findByUniqueId', () => {
+    it('should return program by unique id', async () => {
+      const expectedResult = {
+        id: 1,
+        unique_id: 'program-uid-1',
+        name: 'BEGE',
+      };
+
+      mockProgramsService.findByUniqueId.mockResolvedValue(expectedResult);
+
+      const result = await controller.findByUniqueId('program-uid-1');
+
+      expect(result).toEqual(expectedResult);
+      expect(service.findByUniqueId).toHaveBeenCalledWith('program-uid-1');
+    });
   });
 
-  it('findOne proxies to service', async () => {
-    mockService.findOne.mockResolvedValue('one');
-    expect(await controller.findOne(3)).toBe('one');
-    expect(mockService.findOne).toHaveBeenCalledWith(3);
+  describe('findOne', () => {
+    it('should return one program', async () => {
+      const expectedResult = {
+        id: 1,
+        unique_id: 'program-uid-1',
+        name: 'BEGE',
+      };
+
+      mockProgramsService.findOne.mockResolvedValue(expectedResult);
+
+      const result = await controller.findOne(1);
+
+      expect(result).toEqual(expectedResult);
+      expect(service.findOne).toHaveBeenCalledWith(1);
+    });
   });
 
-  it('update proxies to service', async () => {
-    mockService.update.mockResolvedValue('upd');
-    expect(await controller.update(4, { name: 'x' } as any)).toBe('upd');
-    expect(mockService.update).toHaveBeenCalledWith(4, { name: 'x' });
+  describe('update', () => {
+    it('should update a program', async () => {
+      const dto: UpdateProgramDto = {
+        name: 'Updated BEGE',
+      } as any;
+
+      const expectedResult = {
+        id: 1,
+        unique_id: 'program-uid-1',
+        name: 'Updated BEGE',
+      };
+
+      mockProgramsService.update.mockResolvedValue(expectedResult);
+
+      const result = await controller.update(1, dto);
+
+      expect(result).toEqual(expectedResult);
+      expect(service.update).toHaveBeenCalledWith(1, dto);
+    });
   });
 
-  it('remove proxies to service', async () => {
-    mockService.remove.mockResolvedValue('del');
-    expect(await controller.remove(5)).toBe('del');
-    expect(mockService.remove).toHaveBeenCalledWith(5);
+  describe('remove', () => {
+    it('should delete a program', async () => {
+      const expectedResult = {
+        message: 'Program 1 deleted successfully',
+      };
+
+      mockProgramsService.remove.mockResolvedValue(expectedResult);
+
+      const result = await controller.remove(1);
+
+      expect(result).toEqual(expectedResult);
+      expect(service.remove).toHaveBeenCalledWith(1);
+    });
   });
 });

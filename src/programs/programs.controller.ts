@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { ProgramsService } from './programs.service';
 import {
@@ -18,6 +19,8 @@ import {
   PaginationQueryDto,
 } from './dto/program.dto';
 import { Public } from '../decorators/public.decorator';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 
 @Controller('programs')
 export class ProgramsController {
@@ -26,8 +29,9 @@ export class ProgramsController {
   // POST /programs
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateProgramDto) {
-    return this.programsService.create(dto);
+  create(@Body() dto: CreateProgramDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.programsService.create(dto, user);
   }
 
   // GET /programs?page=1&limit=10&search=keyword
