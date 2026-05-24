@@ -109,14 +109,14 @@ describe('CountriesService', () => {
   describe('remove', () => {
     it('throws NotFoundException when country does not exist', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
-      await expect(service.remove(1)).rejects.toThrow(NotFoundException);
+      await expect(service.remove('abc123')).rejects.toThrow(NotFoundException);
     });
 
     it('deactivates country successfully', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
+      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'abc123' }]]);
       mockConn.execute.mockResolvedValueOnce([{}]);
-      const result = await service.remove(1);
-      expect(result).toEqual({ message: 'Country 1 deactivated successfully' });
+      const result = await service.remove('abc123');
+      expect(result).toEqual({ message: 'Country abc123 deactivated successfully' });
     });
   });
 });
