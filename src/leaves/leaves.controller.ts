@@ -9,10 +9,13 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { LeavesService } from './leaves.service';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 
 @Controller('leaves')
 export class LeavesController {
@@ -21,9 +24,9 @@ export class LeavesController {
   // POST /leaves
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateLeaveDto) {
-    // TODO: replace 'system' with req.user.username from your auth guard
-    return this.leavesService.create(dto, 'system');
+  create(@Body() dto: CreateLeaveDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.leavesService.create(dto, user);
   }
 
   // GET /leaves?page=1&limit=10&status=Pending&staffId=1

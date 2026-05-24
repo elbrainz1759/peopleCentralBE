@@ -16,6 +16,7 @@ import {
   findInternalOverlap,
   rangesOverlap,
 } from '../utils/leave-hours.util';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 export interface Leave {
   id: number;
@@ -138,7 +139,7 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   // POST /leaves
   // ---------------------------------------------------------------------------
-  async create(dto: CreateLeaveDto, createdBy: string): Promise<Leave> {
+  async create(dto: CreateLeaveDto, user: RequestUser): Promise<Leave> {
     const conn = await this.pool.getConnection();
     try {
       // 1. No internal overlaps within submitted ranges
@@ -218,7 +219,7 @@ export class LeavesService {
           dto.reason,
           dto.handoverNote,
           totalHours,
-          createdBy,
+          user.email,
         ],
       );
       const leaveId = result.insertId;
