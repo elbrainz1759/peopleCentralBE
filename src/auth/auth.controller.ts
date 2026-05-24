@@ -8,6 +8,8 @@ import { RequestRefreshDto } from './dto/refresh.dto';
 import { Public } from '../decorators/public.decorator';
 import { RequestMetadata } from '../decorators/requestMetadata.decorator';
 import { ApproveUserDto } from './dto/approveUser.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 interface AuthenticatedRequest extends Request {
   user: {
     userId: string;
@@ -71,8 +73,9 @@ export class AuthController {
 
   @Public()
   @Post('reset-password')
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto.token, dto.newPassword);
+  resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.authService.resetPassword(user, dto.newPassword);
   }
 
   @Get('profile')

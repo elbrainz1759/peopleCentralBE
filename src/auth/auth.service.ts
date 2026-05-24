@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import * as mysql from 'mysql2/promise';
 import { createHash } from 'crypto';
 import { MailService } from '../mail/mail.service';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 interface UserRow extends mysql.RowDataPacket {
   id: number;
@@ -421,21 +422,20 @@ export class AuthService {
     return { message: 'Reset token generated', token };
   }
 
-  async resetPassword(token: string, newPassword: string) {
+  async resetPassword(user: RequestUser, newPassword: string) {
     const [rows] = await this.pool.query<UserRow[]>(
-      'SELECT * FROM users WHERE reset_token = ? AND reset_token_expiry > NOW()',
-      [token],
+      'SELECT * FROM users WHERE email = ?',
+      [user.email],
     );
 
-    const user = rows[0];
-    if (!user) {
-      throw new BadRequestException('Invalid or expired token');
+    if (rows.length === 0) {
+      throw new BadRequestException('User not found');
     }
 
     const hashed = await bcrypt.hash(newPassword, 10);
     await this.pool.query<mysql.ResultSetHeader>(
-      'UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL, passChanged = 1 WHERE id = ?',
-      [hashed, user.id],
+      'UPDATE users SET password = ?, passChanged = 1 WHERE email = ?',
+      [hashed, user.email],
     );
 
     return { message: 'Password reset successful' };
