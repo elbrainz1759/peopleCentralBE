@@ -7,19 +7,24 @@ import {
   Body,
   Param,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { DataTrackerService } from './data-tracker.service';
 import { CreateDataTrackerDto } from './dto/create-data-tracker.dto';
 import { UpdateDataTrackerDto } from './dto/update-data-tracker.dto';
 import { FindDataTrackerDto } from './dto/find-data-tracker.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 @Controller('data-tracker')
 export class DataTrackerController {
   constructor(private readonly dataTrackerService: DataTrackerService) {}
 
   @Post()
-  create(@Body() dto: CreateDataTrackerDto) {
-    return this.dataTrackerService.create(dto);
+  create(@Body() dto: CreateDataTrackerDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+
+    return this.dataTrackerService.create(dto, user);
   }
 
   @Get()

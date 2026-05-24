@@ -9,6 +9,7 @@ import { randomBytes } from 'crypto';
 import { CreateDataTrackerDto } from './dto/create-data-tracker.dto';
 import { UpdateDataTrackerDto } from './dto/update-data-tracker.dto';
 import { FindDataTrackerDto } from './dto/find-data-tracker.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 export interface DataTrackerRow extends mysql.RowDataPacket {
   id: number;
@@ -97,12 +98,14 @@ export class DataTrackerService {
 
   // ─── CRUD ─────────────────────────────────────────────────────────────────
 
-  async create(dto: CreateDataTrackerDto) {
+  async create(dto: CreateDataTrackerDto, user: RequestUser) {
     const unique_id = randomBytes(16).toString('hex');
     const conn = await this.pool.getConnection();
 
     try {
       await conn.beginTransaction();
+
+      const createdBy = user.email;
 
       await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO data_tracker (unique_id, title, description, start_date, end_date, created_by)
@@ -113,7 +116,7 @@ export class DataTrackerService {
           dto.description ?? null,
           dto.start_date,
           dto.end_date,
-          'System',
+          createdBy,
         ],
       );
 
