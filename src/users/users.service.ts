@@ -34,6 +34,7 @@ export class UsersService {
     const [rows] = await this.pool.query<UserRow[]>(
       `SELECT 
         u.id,
+        u.passChanged,
         u.unique_id,
         u.email,
         u.role,
@@ -55,6 +56,7 @@ export class UsersService {
     const [rows] = await this.pool.query<UserRow[]>(
       `SELECT 
         u.id,
+        u.passChanged,
         u.unique_id,
         u.email,
         u.role,
