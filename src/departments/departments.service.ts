@@ -10,6 +10,7 @@ import { CreateDepartmentDto } from './dto/create-department.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { randomBytes } from 'crypto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ export class DepartmentsService {
   // POST /departments
   async create(
     dto: CreateDepartmentDto,
-    createdBy: string = 'System',
+    user: RequestUser,
   ): Promise<Department> {
     const conn = await this.pool.getConnection();
     try {
@@ -59,7 +60,7 @@ export class DepartmentsService {
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO departments (unique_id, name, created_by)
          VALUES (?, ?, ?)`,
-        [unique_id, dto.name, createdBy],
+        [unique_id, dto.name, user.email],
       );
 
       return this.findOne(result.insertId);

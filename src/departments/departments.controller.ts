@@ -12,23 +12,13 @@ import {
   HttpStatus,
   Req,
 } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { DepartmentsService } from './departments.service';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { Public } from '../decorators/public.decorator';
-
-interface AuthenticatedRequest extends Request {
-  user?: {
-    email: string;
-    role: string;
-    unique_id: string;
-    first_name?: string | null;
-    last_name?: string | null;
-    staff_id?: number | null;
-  };
-}
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 @Controller('departments')
 export class DepartmentsController {
@@ -37,9 +27,9 @@ export class DepartmentsController {
   // POST /departments
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateDepartmentDto, @Req() req: AuthenticatedRequest) {
-    const createdBy: string = req.user?.email ?? 'System';
-    return this.departmentsService.create(dto, createdBy);
+  create(@Body() dto: CreateDepartmentDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.departmentsService.create(dto, user);
   }
 
   // GET /departments?page=1&limit=10&search=keyword
