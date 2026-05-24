@@ -34,16 +34,17 @@ export interface PaginatedResult<T> {
 export class CountriesService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
-  // POST /countries
   async create(dto: CreateCountryDto, user: RequestUser): Promise<Country> {
     const conn = await this.pool.getConnection();
     try {
+      const normalizedName = dto.name.trim(); // ← trim input
+
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM countries WHERE name = ?',
-        [dto.name],
+        'SELECT id FROM countries WHERE LOWER(TRIM(name)) = LOWER(?)',
+        [normalizedName],
       );
+
       if (existing.length > 0) {
-        //if country with same name exist, change status to Active instead of creating new one
         await conn.execute(
           'UPDATE countries SET status = "Active" WHERE id = ?',
           [existing[0].id],
@@ -52,12 +53,11 @@ export class CountriesService {
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
-      const created_by: string = user.email;
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO countries (unique_id, name, created_by, status)
-         VALUES (?, ?, ?, ?)`,
-        [unique_id, dto.name, created_by, 'Active'],
+       VALUES (?, ?, ?, ?)`,
+        [unique_id, normalizedName, user.email, 'Active'], // ← use normalizedName
       );
 
       return this.findOne(result.insertId);
