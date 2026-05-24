@@ -379,18 +379,20 @@ export class EmployeeService {
 
   async remove(unique_id: string) {
     try {
-      await this.findByUniqueId(unique_id); // ensure employee exists
+      await this.findByUniqueId(unique_id);
 
       await this.pool.query<mysql.ResultSetHeader>(
-        'DELETE FROM employee WHERE unique_id = ?',
+        'UPDATE employee SET status = "Inactive" WHERE unique_id = ?',
         [unique_id],
       );
 
-      return { message: `Employee with ID ${unique_id} successfully deleted` };
+      return {
+        message: `Employee with ID ${unique_id} successfully deactivated`,
+      };
     } catch (error) {
-      console.error('Delete employee error:', error);
+      console.error('Deactivate employee error:', error);
       if (error instanceof NotFoundException) throw error;
-      throw new InternalServerErrorException('Failed to delete employee');
+      throw new InternalServerErrorException('Failed to deactivate employee');
     }
   }
 }
