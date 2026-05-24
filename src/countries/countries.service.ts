@@ -10,6 +10,7 @@ import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { randomBytes } from 'crypto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 export interface Country {
   id: number;
@@ -34,7 +35,7 @@ export class CountriesService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /countries
-  async create(dto: CreateCountryDto): Promise<Country> {
+  async create(dto: CreateCountryDto, user: RequestUser): Promise<Country> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
@@ -48,7 +49,7 @@ export class CountriesService {
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
-      const created_by: string = 'System';
+      const created_by: string = user.email;
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO countries (unique_id, name, created_by)

@@ -10,12 +10,15 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { CountriesService } from './countries.service';
 import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { Public } from '../decorators/public.decorator';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 @Controller('countries')
 export class CountriesController {
@@ -24,8 +27,9 @@ export class CountriesController {
   // POST /countries
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateCountryDto) {
-    return this.countriesService.create(dto);
+  create(@Body() dto: CreateCountryDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.countriesService.create(dto, user);
   }
 
   // GET /countries?page=1&limit=10&search=keyword
