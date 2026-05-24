@@ -167,8 +167,8 @@ export class AuthService {
 
       // Insert user
       await connection.query<mysql.ResultSetHeader>(
-        'INSERT INTO users (email, password, role, unique_id) VALUES (?, ?, ?, ?)',
-        [email, hashed, role, unique_id],
+        'INSERT INTO users (email, password, role, unique_id, passChanged) VALUES (?, ?, ?, ?, ?)',
+        [email, hashed, role, unique_id, 0],
       );
 
       // Activate employee
@@ -434,7 +434,7 @@ export class AuthService {
 
     const hashed = await bcrypt.hash(newPassword, 10);
     await this.pool.query<mysql.ResultSetHeader>(
-      'UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL WHERE id = ?',
+      'UPDATE users SET password = ?, reset_token = NULL, reset_token_expiry = NULL, passChanged = 1 WHERE id = ?',
       [hashed, user.id],
     );
 
