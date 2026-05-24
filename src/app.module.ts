@@ -9,7 +9,6 @@ import { RolesGuard } from './auth/roles.guard';
 import { UsersModule } from './users/users.module';
 import { EmployeeModule } from './employees/employees.module';
 import { DashboardModule } from './dashboard/dashboard.module';
-import { ExitModule } from './exit/exit.module';
 import { CountriesModule } from './countries/countries.module';
 import { LeaveTypesModule } from './leave-types/leave-types.module';
 import { LocationsModule } from './locations/locations.module';
@@ -42,7 +41,6 @@ import { MailModule } from './mail/mail.module';
     UsersModule,
     EmployeeModule,
     DashboardModule,
-    ExitModule,
     CountriesModule,
     LeaveTypesModule,
     LocationsModule,
