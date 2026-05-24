@@ -49,11 +49,38 @@ describe('AuthController', () => {
     expect(mockAuthService.requestReset).toHaveBeenCalledWith('a@b.com');
   });
 
-  it('resetPassword proxies to service', async () => {
-    mockAuthService.resetPassword.mockResolvedValue({ message: 'ok' });
-    expect(await controller.resetPassword({ token: 't', newPassword: 'p' } as any)).toEqual({ message: 'ok' });
-    expect(mockAuthService.resetPassword).toHaveBeenCalledWith('t', 'p');
-  });
+it('resetPassword proxies to service', async () => {
+  const dto = {
+    newPassword: 'new-password',
+  };
+
+  const mockUser = {
+    id: 1,
+    email: 'user@test.com',
+    role: 'User',
+    unique_id: 'user-uid-1',
+    first_name: 'John',
+    last_name: 'Doe',
+  };
+
+  const req = {
+    user: mockUser,
+  };
+
+  const expectedResult = {
+    message: 'Password reset successful',
+  };
+
+  authService.resetPassword.mockResolvedValue(expectedResult);
+
+  const result = await controller.resetPassword(dto as any, req as any);
+
+  expect(result).toEqual(expectedResult);
+  expect(authService.resetPassword).toHaveBeenCalledWith(
+    mockUser,
+    dto.newPassword,
+  );
+});
 
   it('getProfile returns user from request', () => {
     const req = { user: { userId: '1', email: 'a@b.com' } };
