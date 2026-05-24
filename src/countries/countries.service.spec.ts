@@ -16,12 +16,14 @@ describe('CountriesService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('create', () => {
-    it('errors on duplicate', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
-      await expect(service.create({ name: 'X' } as any)).rejects.toThrow(ConflictException);
-    });
+describe('create', () => {
+  it('errors on duplicate', async () => {
+    mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
+    await expect(
+      service.create({ name: 'X' } as any, 'test@mercycorps.org'),
+    ).rejects.toThrow(ConflictException);
   });
+});
 
   describe('findOne', () => {
     it('not found', async () => {

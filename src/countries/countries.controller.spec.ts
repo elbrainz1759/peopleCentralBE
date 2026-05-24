@@ -11,6 +11,17 @@ describe('CountriesController', () => {
     remove: jest.fn(),
   };
 
+  const mockReq = {
+    user: {
+      id: 1,
+      email: 'test@mercycorps.org',
+      role: 'Admin',
+      unique_id: 'abc123',
+      first_name: 'Test',
+      last_name: 'User',
+    },
+  };
+
   beforeEach(() => {
     controller = new CountriesController(mockService);
   });
@@ -21,7 +32,7 @@ describe('CountriesController', () => {
 
   it('create proxies to service', async () => {
     mockService.create.mockResolvedValue('created');
-    expect(await controller.create({} as any)).toBe('created');
+    expect(await controller.create({} as any, mockReq as any)).toBe('created');
   });
 
   it('findAll proxies to service', async () => {
