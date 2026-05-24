@@ -16,6 +16,12 @@ describe('LeaveTypeConfigsService', () => {
     release: jest.fn(),
   };
 
+  const mockFindOneConn: any = {
+    query: jest.fn(),
+    execute: jest.fn(),
+    release: jest.fn(),
+  };
+
   const mockUser: RequestUser = {
     id: 1,
     email: 'hr@mercycorps.org',
@@ -66,9 +72,9 @@ describe('LeaveTypeConfigsService', () => {
       mockConn.query.mockResolvedValueOnce([[{ unique_id: 'c1' }]]); // country found
       mockConn.query.mockResolvedValueOnce([[]]); // no existing config
       mockConn.query.mockResolvedValueOnce([{ insertId: 10 }]); // INSERT
-      // findOne — new connection
-      mockPool.getConnection.mockResolvedValueOnce(mockConn);
-      mockConn.query.mockResolvedValueOnce([[{
+
+      // findOne uses a separate connection
+      mockFindOneConn.query.mockResolvedValueOnce([[{
         id: 10,
         unique_id: 'uid1',
         leave_type_id: 'lt-uid-1',
@@ -76,6 +82,7 @@ describe('LeaveTypeConfigsService', () => {
         annual_hours: 160,
         monthly_accrual_hours: 13.33,
       }]]);
+      mockPool.getConnection.mockResolvedValueOnce(mockFindOneConn);
 
       const result = await service.create(dto as any, mockUser);
       expect(result.id).toBe(10);
@@ -139,16 +146,18 @@ describe('LeaveTypeConfigsService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-it('updates and returns updated config', async () => {
-  mockConn.query.mockResolvedValueOnce([[{ id: 1, country: 'NG', leave_type_id: 1 }]]); // SELECT existing
-  mockConn.query.mockResolvedValueOnce([[]]); // no conflict
-  mockConn.query.mockResolvedValueOnce([{}]); // UPDATE
-  mockPool.getConnection.mockResolvedValueOnce(mockConn); // ← findOne needs its own connection
-  mockConn.query.mockResolvedValueOnce([[{ id: 1, annual_hours: 200, country: 'NG' }]]);
+    it('updates and returns updated config', async () => {
+      mockConn.query.mockResolvedValueOnce([[{ id: 1, country: 'NG', leave_type_id: 1 }]]); // SELECT existing
+      mockConn.query.mockResolvedValueOnce([[]]); // no conflict
+      mockConn.query.mockResolvedValueOnce([{}]); // UPDATE
 
-  const result = await service.update(1, { annualHours: 200 });
-  expect(result.annual_hours).toBe(200);
-});
+      // findOne uses a separate connection — set it up BEFORE the call
+      mockFindOneConn.query.mockResolvedValueOnce([[{ id: 1, annual_hours: 200, country: 'NG' }]]);
+      mockPool.getConnection.mockResolvedValueOnce(mockFindOneConn);
+
+      const result = await service.update(1, { annualHours: 200 });
+      expect(result.annual_hours).toBe(200);
+    });
   });
 
   describe('remove', () => {
