@@ -10,11 +10,14 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { RolesService } from './roles.service';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 
 @Controller('roles')
 export class RolesController {
@@ -23,8 +26,9 @@ export class RolesController {
   // POST /roles
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateRoleDto) {
-    return this.rolesService.create(dto);
+  create(@Body() dto: CreateRoleDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.rolesService.create(dto, user);
   }
 
   // GET /roles?page=1&limit=10&search=keyword

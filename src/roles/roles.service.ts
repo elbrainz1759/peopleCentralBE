@@ -10,6 +10,7 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { randomBytes } from 'crypto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export class RolesService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /roles
-  async create(dto: CreateRoleDto): Promise<Role> {
+  async create(dto: CreateRoleDto, user: RequestUser): Promise<Role> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
@@ -54,7 +55,7 @@ export class RolesService {
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
-      const created_by: string = 'System';
+      const created_by: string = user.email;
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO roles (unique_id, name, description, created_by)
