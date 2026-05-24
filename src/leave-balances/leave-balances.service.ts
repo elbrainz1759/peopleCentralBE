@@ -7,6 +7,7 @@ import {
 import * as mysql from 'mysql2/promise';
 import { BulkUploadLeaveBalanceDto } from './dto/bulk-upload-leave-balance.dto';
 import { randomBytes } from 'crypto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 export interface LeaveBalance {
   id: number;
@@ -59,6 +60,7 @@ export class LeaveBalancesService {
   // ---------------------------------------------------------------------------
   async bulkUpload(
     dto: BulkUploadLeaveBalanceDto,
+    user: RequestUser,
   ): Promise<{ created: number; skipped: number }> {
     const conn = await this.pool.getConnection();
     const currentYear = new Date().getFullYear();
@@ -83,7 +85,7 @@ export class LeaveBalancesService {
         }
 
         const unique_id = randomBytes(16).toString('hex');
-        const created_by = 'HR Bulk Upload';
+        const created_by = user.email || 'System';
 
         const [result] = await conn.query<mysql.ResultSetHeader>(
           `INSERT INTO leave_balances

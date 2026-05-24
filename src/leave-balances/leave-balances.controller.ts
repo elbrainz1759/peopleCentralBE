@@ -8,11 +8,14 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { LeaveBalancesService } from './leave-balances.service';
 import { BulkUploadLeaveBalanceDto } from './dto/bulk-upload-leave-balance.dto';
 import { AccrueLeaveBalanceDto } from './dto/accrue-leave-balance.dto';
 import { RolloverLeaveBalanceDto } from './dto/rollover-leave-balance.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 
 @Controller('leave-balances')
 export class LeaveBalancesController {
@@ -21,18 +24,20 @@ export class LeaveBalancesController {
   // POST /leave-balances/bulk-upload  (HR seeds all staff balances for the current year)
   @Post('bulk-upload')
   @HttpCode(HttpStatus.CREATED)
-  bulkUpload(@Body() dto: BulkUploadLeaveBalanceDto) {
-    return this.leaveBalancesService.bulkUpload(dto);
+  bulkUpload(@Body() dto: BulkUploadLeaveBalanceDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.leaveBalancesService.bulkUpload(dto, user);
   }
 
   // POST /leave-balances/accrue  (Trigger monthly accrual — run via PM2 cron on the 1st of each month)
   // Accrual rates are resolved per-staff from leave_type_country_config, not passed in the body.
   @Post('accrue')
   @HttpCode(HttpStatus.OK)
-  accrue(@Body() dto: AccrueLeaveBalanceDto) {
+  accrue(@Body() dto: AccrueLeaveBalanceDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
     return this.leaveBalancesService.monthlyAccrue(
       dto.leaveTypeId,
-      dto.createdBy,
+      user.email || 'System',
     );
   }
 
@@ -40,10 +45,11 @@ export class LeaveBalancesController {
   // Caps each staff member's unused annual leave at 80hrs and seeds the new year's balance.
   @Post('rollover')
   @HttpCode(HttpStatus.OK)
-  rollover(@Body() dto: RolloverLeaveBalanceDto) {
+  rollover(@Body() dto: RolloverLeaveBalanceDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
     return this.leaveBalancesService.rolloverYear(
       dto.annualLeaveTypeId,
-      dto.createdBy,
+      user.email || 'System',
     );
   }
 

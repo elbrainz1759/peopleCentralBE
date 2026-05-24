@@ -1,7 +1,9 @@
 import { LeaveBalancesController } from './leave-balances.controller';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 describe('LeaveBalancesController', () => {
   let controller: LeaveBalancesController;
+
   const mockService: any = {
     bulkUpload: jest.fn(),
     monthlyAccrue: jest.fn(),
@@ -9,6 +11,17 @@ describe('LeaveBalancesController', () => {
     findByStaff: jest.fn(),
     findTransactionsByStaff: jest.fn(),
   };
+
+  const mockUser: RequestUser = {
+    id: 1,
+    email: 'hr@mercycorps.org',
+    role: 'Admin',
+    unique_id: 'abc123',
+    first_name: 'HR',
+    last_name: 'User',
+  };
+
+  const mockReq = { user: mockUser };
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -19,90 +32,52 @@ describe('LeaveBalancesController', () => {
     expect(controller).toBeDefined();
   });
 
-  // -------------------------------------------------------------------------
-  describe('bulkUpload', () => {
-    it('proxies dto to service and returns result', async () => {
-      mockService.bulkUpload.mockResolvedValue({ created: 2, skipped: 1 });
-      const dto: any = { balances: [] };
-
-      const result = await controller.bulkUpload(dto);
-
-      expect(result).toEqual({ created: 2, skipped: 1 });
-      expect(mockService.bulkUpload).toHaveBeenCalledWith(dto);
-    });
+  it('bulkUpload proxies to service with user from request', async () => {
+    mockService.bulkUpload.mockResolvedValue({ created: 5, skipped: 1 });
+    const dto = { balances: [] };
+    const result = await controller.bulkUpload(dto as any, mockReq as any);
+    expect(mockService.bulkUpload).toHaveBeenCalledWith(dto, mockUser);
+    expect(result).toEqual({ created: 5, skipped: 1 });
   });
 
-  // -------------------------------------------------------------------------
-  describe('accrue', () => {
-    it('extracts leaveTypeId and createdBy from dto and calls monthlyAccrue', async () => {
-      mockService.monthlyAccrue.mockResolvedValue({ accrued: 5, skipped: 0 });
-      const dto: any = { leaveTypeId: 1, createdBy: 'system-cron' };
-
-      const result = await controller.accrue(dto);
-
-      expect(result).toEqual({ accrued: 5, skipped: 0 });
-      // Must pass the two scalar args — not the raw dto object
-      expect(mockService.monthlyAccrue).toHaveBeenCalledWith(1, 'system-cron');
-    });
+  it('accrue proxies to service with user email', async () => {
+    mockService.monthlyAccrue.mockResolvedValue({ accrued: 10, skipped: 0 });
+    const dto = { leaveTypeId: 1 };
+    const result = await controller.accrue(dto as any, mockReq as any);
+    expect(mockService.monthlyAccrue).toHaveBeenCalledWith(1, 'hr@mercycorps.org');
+    expect(result).toEqual({ accrued: 10, skipped: 0 });
   });
 
-  // -------------------------------------------------------------------------
-  describe('rollover', () => {
-    it('extracts annualLeaveTypeId and createdBy from dto and calls rolloverYear', async () => {
-      mockService.rolloverYear.mockResolvedValue({ rolled: 10, skipped: 2 });
-      const dto: any = { annualLeaveTypeId: 1, createdBy: 'system-cron' };
-
-      const result = await controller.rollover(dto);
-
-      expect(result).toEqual({ rolled: 10, skipped: 2 });
-      expect(mockService.rolloverYear).toHaveBeenCalledWith(1, 'system-cron');
-    });
+  it('accrue falls back to "System" when no user email', async () => {
+    mockService.monthlyAccrue.mockResolvedValue({ accrued: 0, skipped: 0 });
+    const reqNoEmail = { user: { ...mockUser, email: undefined } };
+    await controller.accrue({ leaveTypeId: 1 } as any, reqNoEmail as any);
+    expect(mockService.monthlyAccrue).toHaveBeenCalledWith(1, 'System');
   });
 
-  // -------------------------------------------------------------------------
-  describe('findByStaff', () => {
-    it('passes staffId to service and returns balances', async () => {
-      mockService.findByStaff.mockResolvedValue([{ id: 1 }]);
-
-      const result = await controller.findByStaff(7);
-
-      expect(result).toEqual([{ id: 1 }]);
-      expect(mockService.findByStaff).toHaveBeenCalledWith(7);
-    });
+  it('rollover proxies to service with user email', async () => {
+    mockService.rolloverYear.mockResolvedValue({ rolled: 3, skipped: 0 });
+    const dto = { annualLeaveTypeId: 2 };
+    const result = await controller.rollover(dto as any, mockReq as any);
+    expect(mockService.rolloverYear).toHaveBeenCalledWith(2, 'hr@mercycorps.org');
+    expect(result).toEqual({ rolled: 3, skipped: 0 });
   });
 
-  // -------------------------------------------------------------------------
-  describe('findTransactionsByStaff', () => {
-    it('passes staffId, page, and limit to service', async () => {
-      mockService.findTransactionsByStaff.mockResolvedValue({
-        data: [],
-        meta: { total: 0, page: 2, limit: 20, last_page: 0 },
-      });
+  it('findByStaff proxies to service', async () => {
+    mockService.findByStaff.mockResolvedValue([]);
+    expect(await controller.findByStaff(1)).toEqual([]);
+    expect(mockService.findByStaff).toHaveBeenCalledWith(1);
+  });
 
-      const result = await controller.findTransactionsByStaff(3, 2, 20);
+  it('findTransactionsByStaff proxies to service with defaults', async () => {
+    mockService.findTransactionsByStaff.mockResolvedValue({ data: [], meta: {} });
+    await controller.findTransactionsByStaff(1, 1, 20);
+    expect(mockService.findTransactionsByStaff).toHaveBeenCalledWith(1, 1, 20);
+  });
 
-      expect(mockService.findTransactionsByStaff).toHaveBeenCalledWith(
-        3,
-        2,
-        20,
-      );
-      expect(result.meta.page).toBe(2);
-    });
-
-    it('coerces query string numbers before passing to service', async () => {
-      mockService.findTransactionsByStaff.mockResolvedValue({
-        data: [],
-        meta: {},
-      });
-
-      // Simulate NestJS passing query params as strings
-      await controller.findTransactionsByStaff(1, '3' as any, '15' as any);
-
-      expect(mockService.findTransactionsByStaff).toHaveBeenCalledWith(
-        1,
-        3,
-        15,
-      );
-    });
+  it('findTransactionsByStaff converts string params to numbers', async () => {
+    mockService.findTransactionsByStaff.mockResolvedValue({ data: [], meta: {} });
+    await controller.findTransactionsByStaff(1, '2' as any, '10' as any);
+    expect(mockService.findTransactionsByStaff).toHaveBeenCalledWith(1, 2, 10);
   });
 });
