@@ -424,7 +424,7 @@ export class AuthService {
 
   async resetPassword(user: RequestUser, newPassword: string) {
     const [rows] = await this.pool.query<UserRow[]>(
-      'SELECT * FROM users WHERE email = ?',
+      'SELECT * FROM users WHERE email = ? AND passChanged = 0',
       [user.email],
     );
 
@@ -440,4 +440,5 @@ export class AuthService {
 
     return { message: 'Password reset successful' };
   }
+
 }
