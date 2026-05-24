@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   ParseIntPipe,
+  Req,
 } from '@nestjs/common';
 import {
   ExitInterviewService,
@@ -19,6 +20,8 @@ import { CreateExitInterviewDto } from './dto/create-exit-interview.dto';
 import { UpdateExitInterviewDto } from './dto/update-exit-interview.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { ClearDepartmentDto } from './dto/clear-department.dto';
+import type { Request } from 'express';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 @Controller('exit-interviews')
 export class ExitInterviewController {
@@ -32,8 +35,12 @@ export class ExitInterviewController {
 
   // POST /exit-interviews
   @Post()
-  create(@Body() dto: CreateExitInterviewDto): Promise<ExitInterviewDetail> {
-    return this.exitInterviewService.create(dto);
+  create(
+    @Body() dto: CreateExitInterviewDto,
+    @Req() req: Request,
+  ): Promise<ExitInterviewDetail> {
+    const user = req.user as RequestUser;
+    return this.exitInterviewService.create(dto, user);
   }
 
   // GET /exit-interviews

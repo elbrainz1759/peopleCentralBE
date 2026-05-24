@@ -10,6 +10,7 @@ import { CreateExitInterviewDto } from './dto/create-exit-interview.dto';
 import { UpdateExitInterviewDto } from './dto/update-exit-interview.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { ensureExists } from '../utils/check-exit.util';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -106,11 +107,14 @@ export class ExitInterviewService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /exit-interviews
-  async create(dto: CreateExitInterviewDto): Promise<ExitInterviewDetail> {
+  async create(
+    dto: CreateExitInterviewDto,
+    user: RequestUser,
+  ): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
     try {
       const unique_id = randomBytes(16).toString('hex');
-      const created_by = 'System';
+      const created_by = user.email || 'System';
       const checks: Promise<void>[] = [];
 
       if (dto.departmentId) {
