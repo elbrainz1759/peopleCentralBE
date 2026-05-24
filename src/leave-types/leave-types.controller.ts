@@ -10,11 +10,14 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { LeaveTypesService } from './leave-types.service';
 import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 
 @Controller('leave-types')
 export class LeaveTypesController {
@@ -23,8 +26,9 @@ export class LeaveTypesController {
   // POST /leave-types
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateLeaveTypeDto) {
-    return this.leaveTypesService.create(dto);
+  create(@Body() dto: CreateLeaveTypeDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.leaveTypesService.create(dto, user);
   }
 
   // GET /leave-types?page=1&limit=10&search=keyword

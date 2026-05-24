@@ -10,6 +10,7 @@ import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { randomBytes } from 'crypto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ export class LeaveTypesService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /leave-types
-  async create(dto: CreateLeaveTypeDto): Promise<LeaveType> {
+  async create(dto: CreateLeaveTypeDto, user: RequestUser): Promise<LeaveType> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
@@ -54,7 +55,7 @@ export class LeaveTypesService {
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
-      const created_by: string = 'System';
+      const created_by: string = user.email;
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leave_types (unique_id, name, description, country, created_by)
