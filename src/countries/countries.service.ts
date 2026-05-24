@@ -43,18 +43,21 @@ export class CountriesService {
         [dto.name],
       );
       if (existing.length > 0) {
-        throw new ConflictException(
-          `Country with name "${dto.name}" already exists`,
+        //if country with same name exist, change status to Active instead of creating new one
+        await conn.execute(
+          'UPDATE countries SET status = "Active" WHERE id = ?',
+          [existing[0].id],
         );
+        return this.findOne(existing[0].id as number);
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
       const created_by: string = user.email;
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO countries (unique_id, name, created_by)
-         VALUES (?, ?, ?)`,
-        [unique_id, dto.name, created_by],
+        `INSERT INTO countries (unique_id, name, created_by, status)
+         VALUES (?, ?, ?, ?)`,
+        [unique_id, dto.name, created_by, 'Active'],
       );
 
       return this.findOne(result.insertId);
@@ -84,14 +87,14 @@ export class CountriesService {
       }
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM countries ${whereClause}`,
+        `SELECT COUNT(*) AS total FROM countries ${whereClause} AND status = "Active"`,
         params,
       );
 
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT * FROM countries ${whereClause}
+        `SELECT * FROM countries ${whereClause} AND status = "Active"
          ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
         [...params, limit, offset],
@@ -200,9 +203,12 @@ export class CountriesService {
         throw new NotFoundException(`Country with id ${id} not found`);
       }
 
-      await conn.execute('DELETE FROM countries WHERE id = ?', [id]);
+      await conn.execute(
+        'UPDATE countries SET status = "Inactive" WHERE id = ?',
+        [id],
+      );
 
-      return { message: `Country ${id} deleted successfully` };
+      return { message: `Country ${id} deactivated successfully` };
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
