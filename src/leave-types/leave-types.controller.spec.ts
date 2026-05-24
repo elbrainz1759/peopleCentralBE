@@ -1,7 +1,9 @@
 import { LeaveTypesController } from './leave-types.controller';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 describe('LeaveTypesController', () => {
   let controller: LeaveTypesController;
+
   const mockService: any = {
     create: jest.fn(),
     findAll: jest.fn(),
@@ -11,28 +13,44 @@ describe('LeaveTypesController', () => {
     remove: jest.fn(),
   };
 
+  const mockUser: RequestUser = {
+    id: 1,
+    email: 'hr@mercycorps.org',
+    role: 'Admin',
+    unique_id: 'abc123',
+    first_name: 'HR',
+    last_name: 'User',
+  };
+
+  const mockReq = { user: mockUser };
+
   beforeEach(() => {
-    controller = new LeaveTypesController(mockService as any);
+    jest.resetAllMocks();
+    controller = new LeaveTypesController(mockService);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
 
-  it('create proxies to service', async () => {
-    mockService.create.mockResolvedValue('ok');
-    expect(await controller.create({} as any)).toBe('ok');
+  it('create proxies to service with user from request', async () => {
+    mockService.create.mockResolvedValue('created');
+    const dto = { name: 'Annual Leave', description: 'Annual', country: 'NG' };
+    const result = await controller.create(dto as any, mockReq as any);
+    expect(mockService.create).toHaveBeenCalledWith(dto, mockUser);
+    expect(result).toBe('created');
   });
 
   it('findAll proxies to service', async () => {
     mockService.findAll.mockResolvedValue('list');
     expect(await controller.findAll({} as any)).toBe('list');
+    expect(mockService.findAll).toHaveBeenCalledWith({});
   });
 
   it('findByUniqueId proxies to service', async () => {
     mockService.findByUniqueId.mockResolvedValue('one');
-    expect(await controller.findByUniqueId('uid')).toBe('one');
-    expect(mockService.findByUniqueId).toHaveBeenCalledWith('uid');
+    expect(await controller.findByUniqueId('uid123')).toBe('one');
+    expect(mockService.findByUniqueId).toHaveBeenCalledWith('uid123');
   });
 
   it('findOne proxies to service', async () => {

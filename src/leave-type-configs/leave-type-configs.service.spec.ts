@@ -143,9 +143,7 @@ it('updates and returns updated config', async () => {
   mockConn.query.mockResolvedValueOnce([[{ id: 1, country: 'NG', leave_type_id: 1 }]]); // SELECT existing
   mockConn.query.mockResolvedValueOnce([[]]); // no conflict
   mockConn.query.mockResolvedValueOnce([{}]); // UPDATE
-
-  // findOne needs its own connection
-  mockPool.getConnection.mockResolvedValueOnce(mockConn);
+  mockPool.getConnection.mockResolvedValueOnce(mockConn); // ← findOne needs its own connection
   mockConn.query.mockResolvedValueOnce([[{ id: 1, annual_hours: 200, country: 'NG' }]]);
 
   const result = await service.update(1, { annualHours: 200 });
