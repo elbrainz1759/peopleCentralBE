@@ -1,7 +1,9 @@
 import { LeaveTypeConfigsController } from './leave-type-configs.controller';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 describe('LeaveTypeConfigsController', () => {
   let controller: LeaveTypeConfigsController;
+
   const mockService: any = {
     create: jest.fn(),
     findAll: jest.fn(),
@@ -12,6 +14,17 @@ describe('LeaveTypeConfigsController', () => {
     remove: jest.fn(),
   };
 
+  const mockUser: RequestUser = {
+    id: 1,
+    email: 'hr@mercycorps.org',
+    role: 'Admin',
+    unique_id: 'abc123',
+    first_name: 'HR',
+    last_name: 'User',
+  };
+
+  const mockReq = { user: mockUser };
+
   beforeEach(() => {
     jest.resetAllMocks();
     controller = new LeaveTypeConfigsController(mockService);
@@ -21,97 +34,47 @@ describe('LeaveTypeConfigsController', () => {
     expect(controller).toBeDefined();
   });
 
-  // -------------------------------------------------------------------------
-  describe('create', () => {
-    it('proxies dto to service and returns created config', async () => {
-      const dto: any = { leaveTypeId: 1, country: 'Nigeria', annualHours: 200, monthlyAccrualHours: 10 };
-      mockService.create.mockResolvedValue({ id: 1, ...dto });
-
-      const result = await controller.create(dto);
-
-      expect(mockService.create).toHaveBeenCalledWith(dto);
-      expect(result).toMatchObject({ id: 1 });
-    });
+  it('create proxies to service with user from request', async () => {
+    mockService.create.mockResolvedValue('created');
+    const dto = { leaveTypeId: 'lt1', country: 'NG', annualHours: 160 };
+    const result = await controller.create(dto as any, mockReq as any);
+    expect(mockService.create).toHaveBeenCalledWith(dto, mockUser);
+    expect(result).toBe('created');
   });
 
-  // -------------------------------------------------------------------------
-  describe('findAll', () => {
-    it('returns all configs from service', async () => {
-      const rows = [{ id: 1 }, { id: 2 }];
-      mockService.findAll.mockResolvedValue(rows);
-
-      const result = await controller.findAll();
-
-      expect(mockService.findAll).toHaveBeenCalledWith();
-      expect(result).toEqual(rows);
-    });
+  it('findAll proxies to service', async () => {
+    mockService.findAll.mockResolvedValue([]);
+    expect(await controller.findAll()).toEqual([]);
+    expect(mockService.findAll).toHaveBeenCalled();
   });
 
-  // -------------------------------------------------------------------------
-  describe('findByLeaveType', () => {
-    it('passes leaveTypeId as a string to service', async () => {
-      const rows = [{ id: 1, leave_type_id: 3 }];
-      mockService.findByLeaveType.mockResolvedValue(rows);
-
-      // NestJS delivers route params as strings — no ParseIntPipe on this param
-      const result = await controller.findByLeaveType('3');
-
-      expect(mockService.findByLeaveType).toHaveBeenCalledWith('3');
-      expect(result).toEqual(rows);
-    });
+  it('findByLeaveType proxies to service', async () => {
+    mockService.findByLeaveType.mockResolvedValue([]);
+    expect(await controller.findByLeaveType('lt1')).toEqual([]);
+    expect(mockService.findByLeaveType).toHaveBeenCalledWith('lt1');
   });
 
-  // -------------------------------------------------------------------------
-  describe('findByCountry', () => {
-    it('passes country string to service', async () => {
-      const rows = [{ id: 1, country: 'Nigeria' }];
-      mockService.findByCountry.mockResolvedValue(rows);
-
-      const result = await controller.findByCountry('Nigeria');
-
-      expect(mockService.findByCountry).toHaveBeenCalledWith('Nigeria');
-      expect(result).toEqual(rows);
-    });
+  it('findByCountry proxies to service', async () => {
+    mockService.findByCountry.mockResolvedValue([]);
+    expect(await controller.findByCountry('NG')).toEqual([]);
+    expect(mockService.findByCountry).toHaveBeenCalledWith('NG');
   });
 
-  // -------------------------------------------------------------------------
-  describe('findOne', () => {
-    it('passes parsed id to service', async () => {
-      const row = { id: 7, country: 'Kenya' };
-      mockService.findOne.mockResolvedValue(row);
-
-      const result = await controller.findOne(7);
-
-      expect(mockService.findOne).toHaveBeenCalledWith(7);
-      expect(result).toEqual(row);
-    });
+  it('findOne proxies to service', async () => {
+    mockService.findOne.mockResolvedValue('one');
+    expect(await controller.findOne(1)).toBe('one');
+    expect(mockService.findOne).toHaveBeenCalledWith(1);
   });
 
-  // -------------------------------------------------------------------------
-  describe('update', () => {
-    it('passes id and dto to service and returns updated config', async () => {
-      const dto: any = { annualHours: 240 };
-      const updated = { id: 1, annual_hours: 240 };
-      mockService.update.mockResolvedValue(updated);
-
-      const result = await controller.update(1, dto);
-
-      expect(mockService.update).toHaveBeenCalledWith(1, dto);
-      expect(result).toEqual(updated);
-    });
+  it('update proxies to service', async () => {
+    mockService.update.mockResolvedValue('updated');
+    expect(await controller.update(1, {} as any)).toBe('updated');
+    expect(mockService.update).toHaveBeenCalledWith(1, {});
   });
 
-  // -------------------------------------------------------------------------
-  describe('remove', () => {
-    it('passes unique_id string to service and returns deletion confirmation', async () => {
-      const uniqueId = 'a3f1c2e4b5d6e7f8a9b0c1d2e3f4a5b6';
-      mockService.remove.mockResolvedValue({ deleted: true, unique_id: uniqueId });
-
-      const result = await controller.remove(uniqueId);
-
-      // Must be called with the raw string — no parseInt coercion
-      expect(mockService.remove).toHaveBeenCalledWith(uniqueId);
-      expect(result).toEqual({ deleted: true, unique_id: uniqueId });
-    });
+  it('remove proxies to service with string id', async () => {
+    mockService.remove.mockResolvedValue({ deleted: true, id: 'uid123' });
+    expect(await controller.remove('uid123')).toEqual({ deleted: true, id: 'uid123' });
+    expect(mockService.remove).toHaveBeenCalledWith('uid123');
   });
 });

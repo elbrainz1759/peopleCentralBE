@@ -10,6 +10,7 @@ import * as mysql from 'mysql2/promise';
 import { randomBytes } from 'crypto';
 import { CreateLeaveTypeConfigDto } from './dto/create-leave-type-config.dto';
 import { UpdateLeaveTypeConfigDto } from './dto/update-leave-type-config.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 export interface LeaveTypeConfig {
   id: number;
@@ -30,7 +31,10 @@ export class LeaveTypeConfigsService {
   // ---------------------------------------------------------------------------
   // POST /leave-type-configs
   // ---------------------------------------------------------------------------
-  async create(dto: CreateLeaveTypeConfigDto): Promise<LeaveTypeConfig> {
+  async create(
+    dto: CreateLeaveTypeConfigDto,
+    user: RequestUser,
+  ): Promise<LeaveTypeConfig> {
     const conn = await this.pool.getConnection();
 
     try {
@@ -70,17 +74,19 @@ export class LeaveTypeConfigsService {
       }
 
       const unique_id = randomBytes(16).toString('hex');
+      const createdBy = user.email || 'System';
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leave_type_country_config
-           (unique_id, leave_type_id, country, annual_hours, monthly_accrual_hours)
-         VALUES (?, ?, ?, ?, ?)`,
+           (unique_id, leave_type_id, country, annual_hours, monthly_accrual_hours, created_by)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           unique_id,
           dto.leaveTypeId,
           dto.country,
           dto.annualHours,
           dto.monthlyAccrualHours ?? null,
+          createdBy,
         ],
       );
 

@@ -9,10 +9,13 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { LeaveTypeConfigsService } from './leave-type-configs.service';
 import { CreateLeaveTypeConfigDto } from './dto/create-leave-type-config.dto';
 import { UpdateLeaveTypeConfigDto } from './dto/update-leave-type-config.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 
 @Controller('leave-type-configs')
 export class LeaveTypeConfigsController {
@@ -23,8 +26,9 @@ export class LeaveTypeConfigsController {
   // POST /leave-type-configs
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateLeaveTypeConfigDto) {
-    return this.leaveTypeConfigsService.create(dto);
+  create(@Body() dto: CreateLeaveTypeConfigDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.leaveTypeConfigsService.create(dto, user);
   }
 
   // GET /leave-type-configs
