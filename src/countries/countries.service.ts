@@ -191,23 +191,25 @@ export class CountriesService {
   }
 
   // DELETE /countries/:id
-  async remove(id: number): Promise<{ message: string }> {
+  async remove(unique_id: string): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
       const [findCountry] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM countries WHERE id = ?',
-        [id],
+        'SELECT id FROM countries WHERE unique_id = ?',
+        [unique_id],
       );
       if (!findCountry.length) {
-        throw new NotFoundException(`Country with id ${id} not found`);
+        throw new NotFoundException(
+          `Country with unique_id ${unique_id} not found`,
+        );
       }
 
       await conn.execute(
-        'UPDATE countries SET status = "Inactive" WHERE id = ?',
-        [id],
+        'UPDATE countries SET status = "Inactive" WHERE unique_id = ?',
+        [unique_id],
       );
 
-      return { message: `Country ${id} deactivated successfully` };
+      return { message: `Country ${unique_id} deactivated successfully` };
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);

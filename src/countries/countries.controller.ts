@@ -60,7 +60,7 @@ export class CountriesController {
   // DELETE /countries/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.countriesService.remove(id);
   }
 }
