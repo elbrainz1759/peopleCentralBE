@@ -63,7 +63,7 @@ export class DepartmentsController {
   // DELETE /departments/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.departmentsService.remove(id);
   }
 }

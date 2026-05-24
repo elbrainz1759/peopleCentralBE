@@ -12,8 +12,6 @@ import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { randomBytes } from 'crypto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
-// ─── Interfaces ────────────────────────────────────────────────────────────────
-
 export interface Department {
   id: number;
   unique_id: string;
@@ -58,9 +56,9 @@ export class DepartmentsService {
       const unique_id: string = randomBytes(16).toString('hex');
 
       const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO departments (unique_id, name, created_by)
-         VALUES (?, ?, ?)`,
-        [unique_id, dto.name, user.email],
+        `INSERT INTO departments (unique_id, name, created_by, status)
+         VALUES (?, ?, ?, ?)`,
+        [unique_id, dto.name, user.email, 'Active'],
       );
 
       return this.findOne(result.insertId);
@@ -197,20 +195,25 @@ export class DepartmentsService {
   }
 
   // DELETE /departments/:id
-  async remove(id: number): Promise<{ message: string }> {
+  async remove(id: string): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
       const [findDepartment] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM departments WHERE id = ?',
+        'SELECT unique_id FROM departments WHERE unique_id = ?',
         [id],
       );
       if (!findDepartment.length) {
-        throw new NotFoundException(`Department with id ${id} not found`);
+        throw new NotFoundException(
+          `Department with unique_id ${id} not found`,
+        );
       }
 
-      await conn.execute('DELETE FROM departments WHERE id = ?', [id]);
+      await conn.execute(
+        'UPDATE departments SET status = "Inactive" WHERE unique_id = ?',
+        [id],
+      );
 
-      return { message: `Department ${id} deleted successfully` };
+      return { message: `Department ${id} deactivated successfully` };
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);

@@ -33,28 +33,24 @@ describe('DepartmentsController', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('create', () => {
-    it('proxies to service with authenticated user', async () => {
-      const dto: CreateDepartmentDto = { name: 'Engineering' };
-      const created = { id: 1, name: 'Engineering', unique_id: 'uid1', created_by: 'john@example.com', created_at: new Date() };
-      mockService.create.mockResolvedValue(created);
-
-      const result = await controller.create(dto, mockReq as any);
-
-      expect(mockService.create).toHaveBeenCalledWith(dto, mockUser);
-      expect(result).toEqual(created);
-    });
+  it('create proxies to service with user from request', async () => {
+    const dto = { name: 'Engineering' };
+    mockService.create.mockResolvedValue('created');
+    const result = await controller.create(dto as any, mockReq as any);
+    expect(mockService.create).toHaveBeenCalledWith(dto, mockUser);
+    expect(result).toBe('created');
   });
 
   it('findAll proxies to service', async () => {
     mockService.findAll.mockResolvedValue('list');
     expect(await controller.findAll({} as any)).toBe('list');
+    expect(mockService.findAll).toHaveBeenCalledWith({});
   });
 
   it('findByUniqueId proxies to service', async () => {
     mockService.findByUniqueId.mockResolvedValue('one');
-    expect(await controller.findByUniqueId('uid')).toBe('one');
-    expect(mockService.findByUniqueId).toHaveBeenCalledWith('uid');
+    expect(await controller.findByUniqueId('uid123')).toBe('one');
+    expect(mockService.findByUniqueId).toHaveBeenCalledWith('uid123');
   });
 
   it('findOne proxies to service', async () => {
@@ -69,9 +65,9 @@ describe('DepartmentsController', () => {
     expect(mockService.update).toHaveBeenCalledWith(1, {});
   });
 
-  it('remove proxies to service', async () => {
-    mockService.remove.mockResolvedValue({ message: 'deleted' });
-    expect(await controller.remove(1)).toEqual({ message: 'deleted' });
-    expect(mockService.remove).toHaveBeenCalledWith(1);
+  it('remove proxies to service with string id', async () => {
+    mockService.remove.mockResolvedValue({ message: 'deactivated' });
+    expect(await controller.remove('uid123')).toEqual({ message: 'deactivated' });
+    expect(mockService.remove).toHaveBeenCalledWith('uid123');
   });
 });
