@@ -22,7 +22,6 @@ interface RequestMetadata {
   ip: string | null;
 }
 
-@Public()
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -71,10 +70,10 @@ export class AuthController {
     return this.authService.requestReset(dto.email);
   }
 
-  @Public()
   @Post('reset-password')
   resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
     const user = req.user as RequestUser;
+
     return this.authService.resetPassword(user, dto.newPassword);
   }
 
