@@ -10,6 +10,7 @@ import { CreateDataTrackerDto } from './dto/create-data-tracker.dto';
 import { UpdateDataTrackerDto } from './dto/update-data-tracker.dto';
 import { FindDataTrackerDto } from './dto/find-data-tracker.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { MailService } from '../mail/mail.service';
 
 export interface DataTrackerRow extends mysql.RowDataPacket {
   id: number;
