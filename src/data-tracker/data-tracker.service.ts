@@ -48,7 +48,10 @@ export interface DueNotificationRow extends mysql.RowDataPacket {
 
 @Injectable()
 export class DataTrackerService {
-  constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
+  constructor(
+    @Inject('MYSQL_POOL') private readonly pool: mysql.Pool,
+    private mailService: MailService,
+  ) {}
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
