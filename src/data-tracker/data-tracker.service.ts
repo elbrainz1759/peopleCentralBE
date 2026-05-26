@@ -128,6 +128,14 @@ export class DataTrackerService {
       await this.insertPeriods(conn, unique_id, dto.notification_periods);
 
       await conn.commit();
+
+      await this.mailService.sendCaseNotification({
+        to: createdBy,
+        subject: 'Notification Setup Successful',
+        subjectFull: 'Your data tracker has been created',
+        message: `Your data tracker has been created successfully.`,
+        siteName: 'PeopleCentral',
+      });
       return this.findByUniqueId(unique_id);
     } catch (error) {
       await conn.rollback();
