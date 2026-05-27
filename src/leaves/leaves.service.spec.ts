@@ -196,17 +196,26 @@ describe('LeavesService', () => {
       leaveDuration: [{ startDate: '2026-02-03', endDate: '2026-02-07' }],
     };
 
+    // Query order inside create():
+    //  1. SELECT existing durations   (overlap check — step 3)
+    //  2. SELECT country              (validateAndComputeBalance — step 5)
+    //  3. SELECT config               (validateAndComputeBalance)
+    //  4. SELECT used_hours           (validateAndComputeBalance)
+    //  5. INSERT leaves               (step 6)
+    //  6. INSERT leave_durations      (step 6, one per range)
+    //  7+8. findOne SELECT + durations
+    //  9-12. email helpers (swallowed)
     function seedCreateConn(conn: ReturnType<typeof makeConn>) {
       conn.query
-        .mockResolvedValueOnce([[{ country: 'NGA' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([[]])                       // no existing durations
-        .mockResolvedValueOnce([{ insertId: 1 }])          // INSERT leaves
-        .mockResolvedValueOnce([{}])                       // INSERT leave_durations
-        .mockResolvedValueOnce([[mockLeaveRow]])            // findOne SELECT
-        .mockResolvedValueOnce([[mockDurationRow]])         // findOne durations
-        .mockResolvedValue([[]]); // catch-all for email helpers
+        .mockResolvedValueOnce([[]])                                                    // 1. existing durations
+        .mockResolvedValueOnce([[{ country: 'NGA' }]])                                 // 2. employee country
+        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]]) // 3. leave config
+        .mockResolvedValueOnce([[{ used_hours: 0 }]])                                  // 4. used hours
+        .mockResolvedValueOnce([{ insertId: 1 }])                                      // 5. INSERT leaves
+        .mockResolvedValueOnce([{}])                                                   // 6. INSERT leave_durations
+        .mockResolvedValueOnce([[mockLeaveRow]])                                        // 7. findOne SELECT
+        .mockResolvedValueOnce([[mockDurationRow]])                                     // 8. findOne durations
+        .mockResolvedValue([[]]); // 9-12. email helpers (catch-all)
     }
 
     it('persists the leave and returns it', async () => {
@@ -244,10 +253,12 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       conn.query
+        // existing durations returned first — rangesOverlap() is mocked to
+        // return true so ConflictException fires before balance queries run
+        .mockResolvedValueOnce([[{ start_date: '2026-02-03', end_date: '2026-02-07' }]])
         .mockResolvedValueOnce([[{ country: 'NGA' }]])
         .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([[{ start_date: '2026-02-03', end_date: '2026-02-07' }]]);
+        .mockResolvedValueOnce([[{ used_hours: 0 }]]);
 
       const service = await buildService(conn);
       await expect(service.create(dto, mockUser as any)).rejects.toThrow(ConflictException);
@@ -258,10 +269,10 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       conn.query
+        .mockResolvedValueOnce([[]])                                                    // existing durations
         .mockResolvedValueOnce([[{ country: 'NGA' }]])
         .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([[]]); // no existing
+        .mockResolvedValueOnce([[{ used_hours: 0 }]]);
 
       const service = await buildService(conn);
       await expect(service.create(dto, mockUser as any)).rejects.toThrow(BadRequestException);
@@ -272,10 +283,10 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       conn.query
+        .mockResolvedValueOnce([[]])                                                     // existing durations
         .mockResolvedValueOnce([[{ country: 'NGA' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 10, monthly_accrual_hours: null }]]) // only 10 hrs
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([[]]); // no existing
+        .mockResolvedValueOnce([[{ annual_hours: 10, monthly_accrual_hours: null }]])   // only 10 hrs allowed
+        .mockResolvedValueOnce([[{ used_hours: 0 }]]);
 
       const service = await buildService(conn);
       await expect(service.create(dto, mockUser as any)).rejects.toThrow(BadRequestException);
@@ -284,8 +295,9 @@ describe('LeavesService', () => {
     it('throws BadRequestException when no leave policy for staff country', async () => {
       const conn = makeConn();
       conn.query
-        .mockResolvedValueOnce([[{ country: 'LBR' }]])
-        .mockResolvedValueOnce([[]]); // no config row
+        .mockResolvedValueOnce([[]])                     // existing durations
+        .mockResolvedValueOnce([[{ country: 'LBR' }]])  // employee country
+        .mockResolvedValueOnce([[]]); // no config row for LBR
 
       const service = await buildService(conn);
       await expect(service.create(dto, mockUser as any)).rejects.toThrow(BadRequestException);
@@ -294,10 +306,10 @@ describe('LeavesService', () => {
     it('rolls back and throws InternalServerErrorException on DB failure', async () => {
       const conn = makeConn();
       conn.query
+        .mockResolvedValueOnce([[]])                                                    // existing durations
         .mockResolvedValueOnce([[{ country: 'NGA' }]])
         .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
         .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([[]])
         .mockRejectedValueOnce(new Error('DB insert failed')); // INSERT leaves
 
       const service = await buildService(conn);
