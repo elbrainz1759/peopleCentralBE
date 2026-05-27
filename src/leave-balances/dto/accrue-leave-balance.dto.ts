@@ -2,7 +2,7 @@ import { IsInt, IsString, IsNotEmpty } from 'class-validator';
 
 export class AccrueLeaveBalanceDto {
   @IsInt()
-  leaveTypeId: number = 0;
+  leaveTypeId: string = '';
 
   @IsString()
   @IsNotEmpty()
