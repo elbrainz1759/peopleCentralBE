@@ -1,3 +1,16 @@
+// ─── Module mock MUST be declared before any imports ─────────────────────────
+// Jest hoists jest.mock() calls to the top of the file. This intercepts the
+// 'src/mail/mail.service' import in leaves.service.ts BEFORE NestJS tries to
+// resolve it, replacing it with a factory that returns a plain mock class.
+// The moduleNameMapper in jest.config maps 'src/' → '<rootDir>/' so the path
+// resolves correctly once the mapper is in place.
+jest.mock('src/mail/mail.service', () => ({
+  MailService: jest.fn().mockImplementation(() => ({
+    sendCaseNotification: jest.fn().mockResolvedValue(undefined),
+    sendToMany:           jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 import {
   BadRequestException,
   ConflictException,
@@ -7,6 +20,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { LeavesService } from './leaves.service';
+import { MailService } from 'src/mail/mail.service';
 import * as leaveHoursUtil from '../utils/leave-hours.util';
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
@@ -37,20 +51,12 @@ const mockDurationRow = {
   hours: 40,
 };
 
-// ─── MailService mock (avoids src/ path resolution entirely) ─────────────────
-
-const mockMailService = {
-  sendCaseNotification: jest.fn().mockResolvedValue(undefined),
-  sendToMany:           jest.fn().mockResolvedValue(undefined),
-};
-
 // ─── Connection mock ──────────────────────────────────────────────────────────
 // mysql2/promise query() returns [rows, fields].
-// Each mockResolvedValueOnce call must match the exact destructuring the
-// service uses, e.g.:
-//   const [rows] = await conn.query(...)   → mock returns [ rowsArray ]
-//   const [[row]] = await conn.query(...)  → mock returns [ [ rowObject ] ]
-//   const [result] = await conn.query(...) → mock returns [ resultSetHeader ]
+// Mock shape rules:
+//   const [rows]    = await conn.query(...)  → mock returns [ rowsArray ]
+//   const [[row]]   = await conn.query(...)  → mock returns [ [rowObj] ]
+//   const [result]  = await conn.query(...)  → mock returns [ ResultSetHeader ]
 
 function makeConn() {
   return {
@@ -65,17 +71,22 @@ function makeConn() {
 async function buildService(conn: ReturnType<typeof makeConn>) {
   const pool = { getConnection: jest.fn().mockResolvedValue(conn) };
 
-  // Provide MailService by value so Jest never tries to resolve 'src/mail/...'
+  // MailService is provided using its class as the injection token — this is
+  // how NestJS resolves constructor-injected dependencies. The jest.mock() at
+  // the top of the file ensures the imported MailService class is already a
+  // mock constructor, so NestJS creates an instance of it without hitting
+  // any real SMTP or file-system code.
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       LeavesService,
-      { provide: POOL_TOKEN,  useValue: pool },
-      { provide: 'MailService', useValue: mockMailService },
+      { provide: POOL_TOKEN, useValue: pool },
+      { provide: MailService, useValue: {
+          sendCaseNotification: jest.fn().mockResolvedValue(undefined),
+          sendToMany:           jest.fn().mockResolvedValue(undefined),
+        },
+      },
     ],
-  })
-    .overrideProvider('MailService')
-    .useValue(mockMailService)
-    .compile();
+  }).compile();
 
   return module.get<LeavesService>(LeavesService);
 }
@@ -99,8 +110,8 @@ describe('LeavesService', () => {
     it('returns leave with durations', async () => {
       const conn = makeConn();
       conn.query
-        .mockResolvedValueOnce([[mockLeaveRow]])      // SELECT leaves JOIN leave_types
-        .mockResolvedValueOnce([[mockDurationRow]]);  // SELECT leave_durations
+        .mockResolvedValueOnce([[mockLeaveRow]])
+        .mockResolvedValueOnce([[mockDurationRow]]);
 
       const service = await buildService(conn);
       const result  = await service.findOne(1);
@@ -134,19 +145,10 @@ describe('LeavesService', () => {
     it('returns paginated results with defaults', async () => {
       const conn = makeConn();
       conn.query
-        .mockResolvedValueOnce([[{ total: 1 }]])   // COUNT(*) — note: [[]] double-wrap
-        .mockResolvedValueOnce([[mockLeaveRow]]);   // SELECT rows
-
-      // The service uses [[countRow]] = await conn.query() so mock must be [[{ total: 1 }]]
-      // then wraps again: [[[{ total: 1 }]]] — let's match the actual destructuring:
-      // const [[countRow]] = await conn.query(...)
-      // This means conn.query returns [ [ {total:1} ] ]  (one array wrap)
-      const conn2 = makeConn();
-      conn2.query
         .mockResolvedValueOnce([[{ total: 1 }]])
         .mockResolvedValueOnce([[mockLeaveRow]]);
 
-      const service = await buildService(conn2);
+      const service = await buildService(conn);
       const result  = await service.findAll({});
 
       expect(result.data).toHaveLength(1);
@@ -165,7 +167,6 @@ describe('LeavesService', () => {
       const service = await buildService(conn);
       await service.findAll({ status: 'Pending' });
 
-      // Second query should contain the status param
       const params = conn.query.mock.calls[1][1] as unknown[];
       expect(params).toContain('Pending');
     });
@@ -197,20 +198,14 @@ describe('LeavesService', () => {
 
     function seedCreateConn(conn: ReturnType<typeof makeConn>) {
       conn.query
-        // validateAndComputeBalance
-        .mockResolvedValueOnce([[{ country: 'NGA' }]])                              // employee
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]]) // config
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])                               // used hours
-        // existing durations overlap check
-        .mockResolvedValueOnce([[]])                                                 // no existing
-        // INSERT leaves
-        .mockResolvedValueOnce([{ insertId: 1 }])                                   // ResultSetHeader
-        // INSERT leave_durations
-        .mockResolvedValueOnce([{}])
-        // findOne (post-commit)
-        .mockResolvedValueOnce([[mockLeaveRow]])
-        .mockResolvedValueOnce([[mockDurationRow]])
-        // email resolution (swallowed if it throws)
+        .mockResolvedValueOnce([[{ country: 'NGA' }]])
+        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
+        .mockResolvedValueOnce([[{ used_hours: 0 }]])
+        .mockResolvedValueOnce([[]])                       // no existing durations
+        .mockResolvedValueOnce([{ insertId: 1 }])          // INSERT leaves
+        .mockResolvedValueOnce([{}])                       // INSERT leave_durations
+        .mockResolvedValueOnce([[mockLeaveRow]])            // findOne SELECT
+        .mockResolvedValueOnce([[mockDurationRow]])         // findOne durations
         .mockResolvedValue([[]]); // catch-all for email helpers
     }
 
@@ -252,7 +247,7 @@ describe('LeavesService', () => {
         .mockResolvedValueOnce([[{ country: 'NGA' }]])
         .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
         .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([[{ start_date: '2026-02-03', end_date: '2026-02-07' }]]); // existing
+        .mockResolvedValueOnce([[{ start_date: '2026-02-03', end_date: '2026-02-07' }]]);
 
       const service = await buildService(conn);
       await expect(service.create(dto, mockUser as any)).rejects.toThrow(ConflictException);
@@ -280,7 +275,7 @@ describe('LeavesService', () => {
         .mockResolvedValueOnce([[{ country: 'NGA' }]])
         .mockResolvedValueOnce([[{ annual_hours: 10, monthly_accrual_hours: null }]]) // only 10 hrs
         .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([[]]); // existing
+        .mockResolvedValueOnce([[]]); // no existing
 
       const service = await buildService(conn);
       await expect(service.create(dto, mockUser as any)).rejects.toThrow(BadRequestException);
@@ -311,15 +306,13 @@ describe('LeavesService', () => {
     });
 
     it('still returns the leave when email sending fails', async () => {
-      mockMailService.sendCaseNotification.mockRejectedValueOnce(new Error('SMTP down'));
-
       const conn = makeConn();
       seedCreateConn(conn);
 
       const service = await buildService(conn);
+      // Email errors are swallowed — result must still be returned
       const result  = await service.create(dto, mockUser as any);
-
-      expect(result.id).toBe(1); // committed successfully
+      expect(result.id).toBe(1);
     });
   });
 
@@ -330,7 +323,7 @@ describe('LeavesService', () => {
       const reviewedRow = { ...mockLeaveRow, status: 'Reviewed' };
       const conn = makeConn();
       conn.query
-        .mockResolvedValueOnce([[mockLeaveRow]])       // SELECT leave
+        .mockResolvedValueOnce([[mockLeaveRow]])
         .mockResolvedValueOnce([{}])                   // UPDATE
         .mockResolvedValueOnce([[reviewedRow]])         // findOne SELECT
         .mockResolvedValueOnce([[mockDurationRow]])     // findOne durations
@@ -363,12 +356,12 @@ describe('LeavesService', () => {
 
   describe('approve()', () => {
     function seedApproveConn(conn: ReturnType<typeof makeConn>, remainingHours = 80) {
-      const reviewedRow  = { ...mockLeaveRow, status: 'Reviewed', total_hours: 40 };
-      const approvedRow  = { ...mockLeaveRow, status: 'Approved' };
+      const reviewedRow = { ...mockLeaveRow, status: 'Reviewed', total_hours: 40 };
+      const approvedRow = { ...mockLeaveRow, status: 'Approved' };
 
       conn.query
-        .mockResolvedValueOnce([[reviewedRow]])                                         // SELECT leave
-        .mockResolvedValueOnce([[{ id: 5, remaining_hours: remainingHours }]])          // FOR UPDATE balance
+        .mockResolvedValueOnce([[reviewedRow]])
+        .mockResolvedValueOnce([[{ id: 5, remaining_hours: remainingHours }]])          // FOR UPDATE
         .mockResolvedValueOnce([[{ country: 'NGA' }]])                                 // validateBalance: employee
         .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]]) // validateBalance: config
         .mockResolvedValueOnce([[{ used_hours: 0 }]])                                  // validateBalance: used
@@ -412,18 +405,18 @@ describe('LeavesService', () => {
       const conn = makeConn();
       conn.query
         .mockResolvedValueOnce([[{ ...mockLeaveRow, status: 'Reviewed', total_hours: 40 }]])
-        .mockResolvedValueOnce([[]]); // no balance row
+        .mockResolvedValueOnce([[]]); // no balance
 
       const service = await buildService(conn);
       await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(BadRequestException);
       expect(conn.rollback).toHaveBeenCalled();
     });
 
-    it('throws BadRequestException when remaining_hours insufficient (locked value)', async () => {
+    it('throws BadRequestException when remaining_hours insufficient', async () => {
       const conn = makeConn();
       conn.query
         .mockResolvedValueOnce([[{ ...mockLeaveRow, status: 'Reviewed', total_hours: 40 }]])
-        .mockResolvedValueOnce([[{ id: 5, remaining_hours: 10 }]]); // only 10 hrs left
+        .mockResolvedValueOnce([[{ id: 5, remaining_hours: 10 }]]); // only 10 hrs
 
       const service = await buildService(conn);
       await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(BadRequestException);
@@ -435,7 +428,7 @@ describe('LeavesService', () => {
       conn.query
         .mockResolvedValueOnce([[{ ...mockLeaveRow, status: 'Reviewed', total_hours: 40 }]])
         .mockResolvedValueOnce([[{ id: 5, remaining_hours: 80 }]])
-        .mockRejectedValueOnce(new Error('DB failure')); // validateBalance explodes
+        .mockRejectedValueOnce(new Error('DB failure'));
 
       const service = await buildService(conn);
       await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(InternalServerErrorException);
@@ -450,7 +443,7 @@ describe('LeavesService', () => {
       const rejectedRow = { ...mockLeaveRow, status: 'Rejected' };
       const conn = makeConn();
       conn.query
-        .mockResolvedValueOnce([[mockLeaveRow]])       // SELECT leave (Pending)
+        .mockResolvedValueOnce([[mockLeaveRow]])
         .mockResolvedValueOnce([{}])                   // UPDATE leaves
         .mockResolvedValueOnce([[rejectedRow]])         // findOne SELECT
         .mockResolvedValueOnce([[mockDurationRow]])     // findOne durations
@@ -460,7 +453,6 @@ describe('LeavesService', () => {
       const result  = await service.reject(1, 'hr@mc.org');
 
       expect(result.status).toBe('Rejected');
-      // Verify no UPDATE leave_balances was called (no balance restore for Pending)
       const allSql = conn.query.mock.calls.map((c: any[]) => c[0] as string);
       expect(allSql.some((s) => s.includes('UPDATE leave_balances'))).toBe(false);
     });
@@ -470,7 +462,7 @@ describe('LeavesService', () => {
       const rejectedRow   = { ...mockLeaveRow, status: 'Rejected' };
       const conn = makeConn();
       conn.query
-        .mockResolvedValueOnce([[approvedLeave]])       // SELECT leave
+        .mockResolvedValueOnce([[approvedLeave]])
         .mockResolvedValueOnce([{}])                   // UPDATE leaves → Rejected
         .mockResolvedValueOnce([[{ id: 5 }]])          // SELECT balance FOR UPDATE
         .mockResolvedValueOnce([{}])                   // UPDATE leave_balances (restore)
@@ -482,7 +474,6 @@ describe('LeavesService', () => {
       const service = await buildService(conn);
       await service.reject(1, 'hr@mc.org');
 
-      // The 4th query (index 3) must be UPDATE leave_balances with restoration
       const restoreCall = conn.query.mock.calls[3][0] as string;
       expect(restoreCall).toContain('remaining_hours = remaining_hours +');
     });
@@ -517,15 +508,15 @@ describe('LeavesService', () => {
   describe('cancel()', () => {
     function seedCancelConn(
       conn: ReturnType<typeof makeConn>,
-      initialStatus: string = 'Pending',
+      initialStatus = 'Pending',
     ) {
       const cancelledRow = { ...mockLeaveRow, status: 'Cancelled' };
       conn.query
-        .mockResolvedValueOnce([[{ ...mockLeaveRow, status: initialStatus }]]) // SELECT leave
-        .mockResolvedValueOnce([{}])                                            // UPDATE leaves
-        .mockResolvedValueOnce([{}])                                            // INSERT cancellations
-        .mockResolvedValueOnce([[cancelledRow]])                                 // findOne SELECT
-        .mockResolvedValueOnce([[mockDurationRow]])                              // findOne durations
+        .mockResolvedValueOnce([[{ ...mockLeaveRow, status: initialStatus }]])
+        .mockResolvedValueOnce([{}])                   // UPDATE leaves
+        .mockResolvedValueOnce([{}])                   // INSERT cancellations
+        .mockResolvedValueOnce([[cancelledRow]])        // findOne SELECT
+        .mockResolvedValueOnce([[mockDurationRow]])     // findOne durations
         .mockResolvedValue([[]]); // email helpers
     }
 
