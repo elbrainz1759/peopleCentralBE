@@ -575,7 +575,7 @@ describe('ExitInterviewService', () => {
         (c) => (c[0] as string).includes('exit_interview_audit_log'),
       );
       expect(auditCall).toBeDefined();
-      expect(auditCall![1]).toContain('stage, status');
+      expect(auditCall![1][8]).toContain('stage, status');
     });
 
     it('returns existing record when dto is empty', async () => {
