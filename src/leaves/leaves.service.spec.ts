@@ -95,62 +95,56 @@ const baseDto = {
   ],
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Mock shape rules ─────────────────────────────────────────────────────────
+//
+// mysql2 pool.query() always resolves to a tuple: [rows, fields]
+// The service destructures: const [rows] = await conn.query(...)
+//
+// SELECT → mockResolvedValueOnce([[row1, row2, ...]])   outer array = tuple wrapper
+// INSERT/UPDATE → mockResolvedValueOnce([{ insertId/affectedRows }])
+//
+// queueMocks applies these values in order via mockResolvedValueOnce.
 
-/**
- * Pipes a fixed sequence of resolved values onto conn.query in order.
- * Avoids the spread-in-chain TS error by using a plain loop.
- */
-function queueMocks(
-  conn: ReturnType<typeof makeConn>,
-  responses: unknown[],
-): void {
+function queueMocks(conn: ReturnType<typeof makeConn>, responses: unknown[]): void {
   for (const r of responses) {
     conn.query.mockResolvedValueOnce(r);
   }
 }
 
-/**
- * Standard create() happy-path sequence (single leave type, one handover note):
- *
- * Pre-transaction:
- *   [0]  leave type existence check
- *   [1]  existing durations overlap check
- *   [2]  validateBalanceForType — employee country
- *   [3]  validateBalanceForType — leave_type_country_config
- *   [4]  validateBalanceForType — used hours SUM
- *
- * Transaction:
- *   [5]  INSERT leaves
- *   [6]  INSERT leave_durations
- *   [7]  INSERT handover_notes
- *
- * findOne() after commit:
- *   [8]  SELECT l.*
- *   [9]  SELECT ld.* + lt.name
- *   [10] SELECT handover_notes
- *
- * Notifications:
- *   [11] resolveEmailRecipients — staff/supervisor
- *   [12] resolveEmailRecipients — HR list
- *   [13] resolveStaffName
- */
+// ─── Standard sequences ───────────────────────────────────────────────────────
+//
+// create() — single leave type, one handover note:
+//   [0]  [[{ unique_id }]]          leave type existence check
+//   [1]  [[]]                       existing durations overlap check
+//   [2]  [[{ country }]]            validateBalanceForType — country
+//   [3]  [[{ annual_hours, ... }]]  validateBalanceForType — config
+//   [4]  [[{ used_hours }]]         validateBalanceForType — used hours
+//   [5]  [{ insertId }]             INSERT leaves
+//   [6]  [{ insertId }]             INSERT leave_durations
+//   [7]  [{ insertId }]             INSERT handover_notes
+//   [8]  [[leave]]                  findOne — SELECT leaves
+//   [9]  [[duration]]               findOne — SELECT leave_durations
+//   [10] [[handoverNote]]           findOne — SELECT handover_notes
+//   [11] [[{ staff_email, ... }]]   resolveEmailRecipients — staff/supervisor
+//   [12] [[{ email }]]              resolveEmailRecipients — HR list
+//   [13] [[{ full_name }]]          resolveStaffName
+
 function setupCreateMocks(conn: ReturnType<typeof makeConn>): void {
   queueMocks(conn, [
-    [{ unique_id: 'lt-uid-001' }],                                       // [0]
-    [],                                                                    // [1]
-    [{ country: 'Nigeria' }],                                             // [2]
-    [{ annual_hours: 160, monthly_accrual_hours: null }],                 // [3]
-    [{ used_hours: 0 }],                                                  // [4]
-    { insertId: 1 },                                                       // [5]
-    { insertId: 1 },                                                       // [6]
-    { insertId: 1 },                                                       // [7]
-    [baseLeave],                                                           // [8]
-    [baseDuration],                                                        // [9]
-    [baseHandoverNote],                                                    // [10]
-    [{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }],   // [11]
-    [{ email: 'hr@mc.org' }],                                             // [12]
-    [{ full_name: 'John Doe' }],                                          // [13]
+    [[{ unique_id: 'lt-uid-001' }]],                                        // [0]
+    [[]],                                                                    // [1]
+    [[{ country: 'Nigeria' }]],                                             // [2]
+    [[{ annual_hours: 160, monthly_accrual_hours: null }]],                 // [3]
+    [[{ used_hours: 0 }]],                                                  // [4]
+    [{ insertId: 1 }],                                                       // [5]
+    [{ insertId: 1 }],                                                       // [6]
+    [{ insertId: 1 }],                                                       // [7]
+    [[baseLeave]],                                                           // [8]
+    [[baseDuration]],                                                        // [9]
+    [[baseHandoverNote]],                                                    // [10]
+    [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],   // [11]
+    [[{ email: 'hr@mc.org' }]],                                             // [12]
+    [[{ full_name: 'John Doe' }]],                                          // [13]
   ]);
 }
 
@@ -200,21 +194,21 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [],
-        [{ country: 'Nigeria' }],
-        [{ annual_hours: 160, monthly_accrual_hours: null }],
-        [{ used_hours: 0 }],
-        { insertId: 1 },  // INSERT leaves
-        { insertId: 1 },  // INSERT leave_durations
-        { insertId: 1 },  // INSERT handover_notes a@
-        { insertId: 2 },  // INSERT handover_notes b@
-        [baseLeave],
-        [baseDuration],
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [],
-        [{ full_name: 'John Doe' }],
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [{ insertId: 1 }],   // INSERT leaves
+        [{ insertId: 1 }],   // INSERT leave_durations
+        [{ insertId: 1 }],   // INSERT handover_notes a@
+        [{ insertId: 2 }],   // INSERT handover_notes b@
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -239,21 +233,21 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [],
-        [{ country: 'Nigeria' }],
-        [{ annual_hours: 160, monthly_accrual_hours: null }],
-        [{ used_hours: 0 }],
-        { insertId: 1 },
-        { insertId: 1 },
-        { insertId: 1 },  // handover a@
-        { insertId: 2 },  // handover b@
-        [baseLeave],
-        [baseDuration],
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }],
-        [{ email: 'hr@mc.org' }],
-        [{ full_name: 'John Doe' }],
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [{ insertId: 1 }],
+        [{ insertId: 1 }],
+        [{ insertId: 1 }],   // handover a@
+        [{ insertId: 2 }],   // handover b@
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],
+        [[{ email: 'hr@mc.org' }]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -272,20 +266,19 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [],
-        [{ country: 'Nigeria' }],
-        [{ annual_hours: 160, monthly_accrual_hours: null }],
-        [{ used_hours: 0 }],
-        { insertId: 1 },  // INSERT leaves
-        { insertId: 1 },  // INSERT leave_durations
-        // no handover inserts
-        [baseLeave],
-        [baseDuration],
-        [],               // empty handover_notes
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [],
-        [{ full_name: 'John Doe' }],
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [{ insertId: 1 }],   // INSERT leaves
+        [{ insertId: 1 }],   // INSERT leave_durations
+        [[baseLeave]],
+        [[baseDuration]],
+        [[]],                // empty handover_notes
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -315,25 +308,25 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [{ unique_id: 'lt-uid-002' }],
-        [],
-        [{ country: 'Nigeria' }],
-        [{ annual_hours: 160, monthly_accrual_hours: null }],
-        [{ used_hours: 0 }],
-        [{ country: 'Nigeria' }],
-        [{ annual_hours: 80, monthly_accrual_hours: null }],
-        [{ used_hours: 0 }],
-        { insertId: 1 },  // INSERT leaves
-        { insertId: 1 },  // INSERT duration 1
-        { insertId: 2 },  // INSERT duration 2
-        { insertId: 1 },  // INSERT handover_notes
-        [baseLeave],
-        [baseDuration],
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [],
-        [{ full_name: 'John Doe' }],
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[{ unique_id: 'lt-uid-002' }]],
+        [[]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 80, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [{ insertId: 1 }],   // INSERT leaves
+        [{ insertId: 1 }],   // INSERT duration 1
+        [{ insertId: 2 }],   // INSERT duration 2
+        [{ insertId: 1 }],   // INSERT handover_notes
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -367,7 +360,9 @@ describe('LeavesService', () => {
 
     it('throws BadRequestException when leave type does not exist', async () => {
       const conn = makeConn();
-      conn.query.mockResolvedValueOnce([]); // empty — leave type not found
+      queueMocks(conn, [
+        [[]], // leave type query returns empty rows → not found
+      ]);
 
       const service = await buildService(conn);
       await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
@@ -377,8 +372,8 @@ describe('LeavesService', () => {
       (rangesOverlap as jest.Mock).mockReturnValue(true);
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [{ start_date: '2025-02-01', end_date: '2025-02-01' }],
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[{ start_date: '2025-02-01', end_date: '2025-02-01' }]],
       ]);
 
       const service = await buildService(conn);
@@ -389,8 +384,8 @@ describe('LeavesService', () => {
       (calculateHoursForRange as jest.Mock).mockReturnValue(0);
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [],
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[]],
       ]);
 
       const service = await buildService(conn);
@@ -400,11 +395,11 @@ describe('LeavesService', () => {
     it('throws BadRequestException when balance is insufficient', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [],
-        [{ country: 'Nigeria' }],
-        [{ annual_hours: 8, monthly_accrual_hours: null }],
-        [{ used_hours: 8 }], // fully consumed
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 8, monthly_accrual_hours: null }]],
+        [[{ used_hours: 8 }]], // fully consumed
       ]);
 
       const service = await buildService(conn);
@@ -415,10 +410,10 @@ describe('LeavesService', () => {
     it('throws BadRequestException when no leave policy configured for country', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [],
-        [{ country: 'Nigeria' }],
-        [], // no config row
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[]],
+        [[{ country: 'Nigeria' }]],
+        [[]], // no config row
       ]);
 
       const service = await buildService(conn);
@@ -441,11 +436,11 @@ describe('LeavesService', () => {
     it('rolls back and throws InternalServerErrorException on unexpected db error', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [{ unique_id: 'lt-uid-001' }],
-        [],
-        [{ country: 'Nigeria' }],
-        [{ annual_hours: 160, monthly_accrual_hours: null }],
-        [{ used_hours: 0 }],
+        [[{ unique_id: 'lt-uid-001' }]],
+        [[]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
       ]);
       conn.query.mockRejectedValueOnce(new Error('DB crash')); // INSERT leaves fails
 
@@ -463,10 +458,10 @@ describe('LeavesService', () => {
     it('returns paginated leaves with durations and handover notes attached', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [{ total: 1 }],
-        [baseLeave],
-        [baseDuration],
-        [baseHandoverNote],
+        [[{ total: 1 }]],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
       ]);
 
       const service = await buildService(conn);
@@ -485,10 +480,10 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       queueMocks(conn, [
-        [{ total: 2 }],
-        [baseLeave, leave2],
-        [baseDuration, { ...baseDuration, id: 2, leave_id: 2 }],
-        [baseHandoverNote, hn2],
+        [[{ total: 2 }]],
+        [[baseLeave, leave2]],
+        [[baseDuration, { ...baseDuration, id: 2, leave_id: 2 }]],
+        [[baseHandoverNote, hn2]],
       ]);
 
       const service = await buildService(conn);
@@ -501,10 +496,10 @@ describe('LeavesService', () => {
     it('returns empty handoverNotes array when leave has none', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [{ total: 1 }],
-        [baseLeave],
-        [baseDuration],
-        [], // no handover notes
+        [[{ total: 1 }]],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[]], // no handover notes
       ]);
 
       const service = await buildService(conn);
@@ -516,8 +511,8 @@ describe('LeavesService', () => {
     it('skips duration and handover queries when page is empty', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [{ total: 0 }],
-        [], // empty page
+        [[{ total: 0 }]],
+        [[]], // empty page
       ]);
 
       const service = await buildService(conn);
@@ -529,7 +524,7 @@ describe('LeavesService', () => {
 
     it('filters by status', async () => {
       const conn = makeConn();
-      queueMocks(conn, [[{ total: 0 }], [], [], []]);
+      queueMocks(conn, [[[{ total: 0 }]], [[]], [[]], [[]]]);
 
       const service = await buildService(conn);
       await service.findAll({ page: 1, limit: 10, status: 'Approved' });
@@ -540,7 +535,7 @@ describe('LeavesService', () => {
 
     it('filters by staffId', async () => {
       const conn = makeConn();
-      queueMocks(conn, [[{ total: 0 }], [], [], []]);
+      queueMocks(conn, [[[{ total: 0 }]], [[]], [[]], [[]]]);
 
       const service = await buildService(conn);
       await service.findAll({ page: 1, limit: 10, staffId: 10 });
@@ -565,9 +560,9 @@ describe('LeavesService', () => {
     it('returns leave with durations and handover notes', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [baseLeave],
-        [baseDuration],
-        [baseHandoverNote],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
       ]);
 
       const service = await buildService(conn);
@@ -581,7 +576,7 @@ describe('LeavesService', () => {
 
     it('returns empty handoverNotes when none exist', async () => {
       const conn = makeConn();
-      queueMocks(conn, [[baseLeave], [baseDuration], []]);
+      queueMocks(conn, [[[baseLeave]], [[baseDuration]], [[]]]);
 
       const service = await buildService(conn);
       const result = await service.findOne(1);
@@ -612,14 +607,14 @@ describe('LeavesService', () => {
     it('transitions Pending → Reviewed and notifies staff and supervisor', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [baseLeave],
-        { affectedRows: 1 },                                                // UPDATE
-        [baseLeave],                                                         // findOne — leave
-        [baseDuration],                                                      // findOne — durations
-        [baseHandoverNote],                                                  // findOne — handover_notes
-        [{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }],
-        [{ email: 'hr@mc.org' }],
-        [{ full_name: 'John Doe' }],
+        [[baseLeave]],
+        [{ affectedRows: 1 }],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],
+        [[{ email: 'hr@mc.org' }]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -658,21 +653,21 @@ describe('LeavesService', () => {
     it('approves a Reviewed leave and deducts balance', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [reviewedLeave],
-        [baseDuration],
-        [{ id: 5, remaining_hours: 100 }],           // FOR UPDATE balance
-        [{ country: 'Nigeria' }],                     // validateBalance — country
-        [{ annual_hours: 160, monthly_accrual_hours: null }], // validateBalance — config
-        [{ used_hours: 0 }],                          // validateBalance — used
-        { affectedRows: 1 },                          // UPDATE leaves
-        { affectedRows: 1 },                          // UPDATE leave_balances
-        { insertId: 1 },                              // INSERT transaction
-        [reviewedLeave],                              // findOne — leave
-        [baseDuration],                               // findOne — durations
-        [baseHandoverNote],                           // findOne — handover_notes
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [{ email: 'hr@mc.org' }],
-        [{ full_name: 'John Doe' }],
+        [[reviewedLeave]],
+        [[baseDuration]],
+        [[{ id: 5, remaining_hours: 100 }]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [{ affectedRows: 1 }],   // UPDATE leaves
+        [{ affectedRows: 1 }],   // UPDATE leave_balances
+        [{ insertId: 1 }],       // INSERT transaction
+        [[reviewedLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[{ email: 'hr@mc.org' }]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -695,27 +690,27 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       queueMocks(conn, [
-        [reviewedLeave],
-        multiDurations,
-        [{ id: 5, remaining_hours: 80 }],            // FOR UPDATE lt-uid-001
-        [{ id: 6, remaining_hours: 40 }],            // FOR UPDATE lt-uid-002
-        [{ country: 'Nigeria' }],                    // validateBalance lt-uid-001
-        [{ annual_hours: 160, monthly_accrual_hours: null }],
-        [{ used_hours: 0 }],
-        [{ country: 'Nigeria' }],                    // validateBalance lt-uid-002
-        [{ annual_hours: 80, monthly_accrual_hours: null }],
-        [{ used_hours: 0 }],
-        { affectedRows: 1 },                         // UPDATE leaves
-        { affectedRows: 1 },                         // UPDATE balance lt-uid-001
-        { insertId: 1 },                             // INSERT txn lt-uid-001
-        { affectedRows: 1 },                         // UPDATE balance lt-uid-002
-        { insertId: 2 },                             // INSERT txn lt-uid-002
-        [reviewedLeave],
-        multiDurations,
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [],
-        [{ full_name: 'John Doe' }],
+        [[reviewedLeave]],
+        [multiDurations],
+        [[{ id: 5, remaining_hours: 80 }]],
+        [[{ id: 6, remaining_hours: 40 }]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 80, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [{ affectedRows: 1 }],   // UPDATE leaves
+        [{ affectedRows: 1 }],   // UPDATE balance lt-uid-001
+        [{ insertId: 1 }],       // INSERT txn lt-uid-001
+        [{ affectedRows: 1 }],   // UPDATE balance lt-uid-002
+        [{ insertId: 2 }],       // INSERT txn lt-uid-002
+        [[reviewedLeave]],
+        [multiDurations],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -738,9 +733,9 @@ describe('LeavesService', () => {
     it('throws BadRequestException when balance record not found', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [reviewedLeave],
-        [baseDuration],
-        [], // no balance row
+        [[reviewedLeave]],
+        [[baseDuration]],
+        [[]], // no balance row
       ]);
 
       const service = await buildService(conn);
@@ -751,9 +746,9 @@ describe('LeavesService', () => {
     it('throws BadRequestException when remaining hours insufficient', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [reviewedLeave],
-        [baseDuration],                              // 8 hrs required
-        [{ id: 5, remaining_hours: 4 }],             // only 4 available
+        [[reviewedLeave]],
+        [[baseDuration]],
+        [[{ id: 5, remaining_hours: 4 }]],
       ]);
 
       const service = await buildService(conn);
@@ -771,7 +766,7 @@ describe('LeavesService', () => {
 
     it('rolls back on unexpected db error', async () => {
       const conn = makeConn();
-      queueMocks(conn, [[reviewedLeave], [baseDuration]]);
+      queueMocks(conn, [[[reviewedLeave]], [[baseDuration]]]);
       conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
@@ -788,14 +783,14 @@ describe('LeavesService', () => {
     it('rejects a Pending leave without touching balances', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [baseLeave],
-        { affectedRows: 1 },      // UPDATE status
-        [baseLeave],               // findOne
-        [baseDuration],
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [],
-        [{ full_name: 'John Doe' }],
+        [[baseLeave]],
+        [{ affectedRows: 1 }],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -813,18 +808,18 @@ describe('LeavesService', () => {
 
       const conn = makeConn();
       queueMocks(conn, [
-        [approvedLeave],
-        { affectedRows: 1 },      // UPDATE status
-        [baseDuration],            // load durations for reversal
-        [{ id: 5 }],              // FOR UPDATE balance
-        { affectedRows: 1 },      // UPDATE balance (restore)
-        { insertId: 1 },          // INSERT reversal txn
-        [approvedLeave],           // findOne
-        [baseDuration],
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [],
-        [{ full_name: 'John Doe' }],
+        [[approvedLeave]],
+        [{ affectedRows: 1 }],
+        [[baseDuration]],
+        [[{ id: 5 }]],
+        [{ affectedRows: 1 }],
+        [{ insertId: 1 }],
+        [[approvedLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -859,7 +854,7 @@ describe('LeavesService', () => {
 
     it('rolls back on unexpected db error', async () => {
       const conn = makeConn();
-      queueMocks(conn, [[baseLeave]]);
+      queueMocks(conn, [[[baseLeave]]]);
       conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
@@ -876,15 +871,15 @@ describe('LeavesService', () => {
     it('cancels a Pending leave and writes cancellation audit record', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [baseLeave],
-        { affectedRows: 1 },   // UPDATE status
-        { insertId: 1 },       // INSERT leave_cancellations
-        [baseLeave],            // findOne
-        [baseDuration],
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }],
-        [{ email: 'hr@mc.org' }],
-        [{ full_name: 'John Doe' }],
+        [[baseLeave]],
+        [{ affectedRows: 1 }],
+        [{ insertId: 1 }],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],
+        [[{ email: 'hr@mc.org' }]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -903,15 +898,15 @@ describe('LeavesService', () => {
     it('cancels a Reviewed leave', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [{ ...baseLeave, status: 'Reviewed' }],
-        { affectedRows: 1 },
-        { insertId: 1 },
-        [baseLeave],
-        [baseDuration],
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [],
-        [{ full_name: 'John Doe' }],
+        [[{ ...baseLeave, status: 'Reviewed' }]],
+        [{ affectedRows: 1 }],
+        [{ insertId: 1 }],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -922,15 +917,15 @@ describe('LeavesService', () => {
     it('passes null reason to cancellation record when not provided', async () => {
       const conn = makeConn();
       queueMocks(conn, [
-        [baseLeave],
-        { affectedRows: 1 },
-        { insertId: 1 },
-        [baseLeave],
-        [baseDuration],
-        [baseHandoverNote],
-        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
-        [],
-        [{ full_name: 'John Doe' }],
+        [[baseLeave]],
+        [{ affectedRows: 1 }],
+        [{ insertId: 1 }],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
       ]);
 
       const service = await buildService(conn);
@@ -968,7 +963,7 @@ describe('LeavesService', () => {
 
     it('rolls back on unexpected db error', async () => {
       const conn = makeConn();
-      queueMocks(conn, [[baseLeave]]);
+      queueMocks(conn, [[[baseLeave]]]);
       conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
