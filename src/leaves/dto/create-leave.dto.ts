@@ -1,42 +1,41 @@
 import {
+  IsArray,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
-  IsArray,
   ValidateNested,
-  IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class LeaveDurationDto {
-  @IsDateString()
+  @IsString()
   @IsNotEmpty()
   startDate: string = '';
 
-  @IsDateString()
+  @IsString()
   @IsNotEmpty()
   endDate: string = '';
+
+  @IsString()
+  @IsNotEmpty()
+  leaveTypeId: string = ''; // unique_id of the leave type for this range
 }
 
 export class CreateLeaveDto {
   @IsInt()
-  @IsNotEmpty()
   staffId: number = 0;
 
   @IsString()
+  @IsOptional()
+  reason?: string;
+
+  @IsString()
   @IsNotEmpty()
-  leaveTypeId: string = '';
+  handoverNote: string = '';
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => LeaveDurationDto)
   leaveDuration: LeaveDurationDto[] = [];
-
-  @IsString()
-  @IsNotEmpty()
-  reason: string = '';
-
-  @IsString()
-  @IsNotEmpty()
-  handoverNote: string = '';
 }
