@@ -1,7 +1,6 @@
 import {
   IsArray,
   IsEmail,
-  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -33,7 +32,8 @@ export class HandoverNoteDto {
 }
 
 export class CreateLeaveDto {
-  @IsInt()
+  @IsString()
+  @IsNotEmpty()
   staffId: string = '';
 
   @IsString()
