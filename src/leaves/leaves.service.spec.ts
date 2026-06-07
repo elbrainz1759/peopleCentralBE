@@ -9,7 +9,7 @@ import {
 import { LeavesService } from './leaves.service';
 import { MailService } from 'src/mail/mail.service';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
-
+import { S3Service } from '../s3/s3.service';
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 jest.mock('../utils/leave-hours.util', () => ({
@@ -38,6 +38,12 @@ const mockMailService = {
   sendToMany: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockS3Service = {
+  uploadLeavePdf: jest.fn().mockResolvedValue('leaves/1/test.pdf'),
+  getPresignedUrl: jest.fn().mockResolvedValue('https://s3.example.com/signed'),
+  deleteFile: jest.fn().mockResolvedValue(undefined),
+};
+
 const buildService = async (conn: ReturnType<typeof makeConn>) => {
   const pool = { getConnection: jest.fn().mockResolvedValue(conn) };
   const module = await Test.createTestingModule({
@@ -45,6 +51,7 @@ const buildService = async (conn: ReturnType<typeof makeConn>) => {
       LeavesService,
       { provide: 'MYSQL_POOL', useValue: pool },
       { provide: MailService, useValue: mockMailService },
+      { provide: S3Service, useValue: mockS3Service },
     ],
   }).compile();
   return module.get(LeavesService);
@@ -151,12 +158,13 @@ function setupCreateMocks(conn: ReturnType<typeof makeConn>): void {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('LeavesService', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (findInternalOverlap as jest.Mock).mockReturnValue(null);
-    (rangesOverlap as jest.Mock).mockReturnValue(false);
-    (calculateHoursForRange as jest.Mock).mockReturnValue(8);
-  });
+beforeEach(() => {
+  jest.clearAllMocks();
+  (findInternalOverlap as jest.Mock).mockReturnValue(null);
+  (rangesOverlap as jest.Mock).mockReturnValue(false);
+  (calculateHoursForRange as jest.Mock).mockReturnValue(8);
+  mockS3Service.uploadLeavePdf.mockResolvedValue('leaves/1/test.pdf');
+});
 
   // ── create ──────────────────────────────────────────────────────────────────
 

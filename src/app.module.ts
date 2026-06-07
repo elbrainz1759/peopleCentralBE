@@ -28,6 +28,7 @@ import { RolesModule } from './roles/roles.module';
 import { MailService } from './mail/mail.service';
 import { MailModule } from './mail/mail.module';
 import { S3Service } from './s3/s3.service';
+import { S3Module } from './s3/s3.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { S3Service } from './s3/s3.service';
     LeaveTypeConfigsModule,
     RolesModule,
     MailModule,
+    S3Module,
   ],
   controllers: [AppController, HealthController, RolesController],
   providers: [
