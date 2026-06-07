@@ -1008,4 +1008,21 @@ describe('LeavesService', () => {
       );
     });
   });
+
+  it('throws BadRequestException when balance is insufficient', async () => {
+  const conn = makeConn();
+  queueMocks(conn, [
+    [[{ unique_id: 'lt-uid-001' }]],                          // leave type check
+    [[]],                                                      // overlap check
+    [[{ country: 'Nigeria' }]],                               // validateBalance — country
+    [[{ annual_hours: 8, monthly_accrual_hours: null }]],     // validateBalance — config
+    [[{ used_hours: 8 }]],                                    // validateBalance — used hours
+    [[{ name: 'Annual Leave' }]],                             // leave type name lookup (error msg)
+  ]);
+
+  const service = await buildService(conn);
+  await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
+  expect(conn.beginTransaction).not.toHaveBeenCalled();
+  });
+  
 });
