@@ -76,7 +76,7 @@ describe('LeavesController', () => {
 
       const result = await controller.create(dto, mockReq() as Request);
 
-      expect(mockLeavesService.create).toHaveBeenCalledWith(dto, mockUser);
+      expect(mockLeavesService.create).toHaveBeenCalledWith(dto, mockUser, undefined);
       expect(result).toEqual(mockLeave);
     });
 
