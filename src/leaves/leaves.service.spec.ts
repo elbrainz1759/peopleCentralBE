@@ -392,20 +392,7 @@ describe('LeavesService', () => {
       await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
     });
 
-    it('throws BadRequestException when balance is insufficient', async () => {
-      const conn = makeConn();
-      queueMocks(conn, [
-        [[{ unique_id: 'lt-uid-001' }]],
-        [[]],
-        [[{ country: 'Nigeria' }]],
-        [[{ annual_hours: 8, monthly_accrual_hours: null }]],
-        [[{ used_hours: 8 }]], // fully consumed
-      ]);
 
-      const service = await buildService(conn);
-      await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
-      expect(conn.beginTransaction).not.toHaveBeenCalled();
-    });
 
     it('throws BadRequestException when no leave policy configured for country', async () => {
       const conn = makeConn();
@@ -1009,20 +996,20 @@ describe('LeavesService', () => {
     });
   });
 
-  it('throws BadRequestException when balance is insufficient', async () => {
+it('throws BadRequestException when balance is insufficient', async () => {
   const conn = makeConn();
   queueMocks(conn, [
-    [[{ unique_id: 'lt-uid-001' }]],                          // leave type check
-    [[]],                                                      // overlap check
-    [[{ country: 'Nigeria' }]],                               // validateBalance — country
-    [[{ annual_hours: 8, monthly_accrual_hours: null }]],     // validateBalance — config
-    [[{ used_hours: 8 }]],                                    // validateBalance — used hours
-    [[{ name: 'Annual Leave' }]],                             // leave type name lookup (error msg)
+    [[{ unique_id: 'lt-uid-001' }]],                       // leave type check
+    [[]],                                                   // overlap check
+    [[{ country: 'Nigeria' }]],                            // validateBalance — country
+    [[{ annual_hours: 8, monthly_accrual_hours: null }]],  // validateBalance — config
+    [[{ used_hours: 8 }]],                                 // validateBalance — used hours
+    [[[{ name: 'Annual Leave' }]]],                        // leave type name (double-destructured)
   ]);
 
   const service = await buildService(conn);
   await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
   expect(conn.beginTransaction).not.toHaveBeenCalled();
-  });
+});
   
 });
