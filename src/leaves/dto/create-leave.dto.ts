@@ -34,7 +34,7 @@ export class HandoverNoteDto {
 
 export class CreateLeaveDto {
   @IsInt()
-  staffId: number = 0;
+  staffId: string = '';
 
   @IsString()
   @IsOptional()

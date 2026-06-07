@@ -25,7 +25,7 @@ import { S3Service } from '../s3/s3.service';
 export interface Leave {
   id: number;
   unique_id: string;
-  staff_id: number;
+  staff_id: string;
   reason: string;
   total_hours: number;
   status: 'Pending' | 'Reviewed' | 'Approved' | 'Rejected' | 'Cancelled';
@@ -204,7 +204,7 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   private async resolveEmailRecipients(
     conn: mysql.PoolConnection,
-    staffId: number,
+    staffId: string,
   ): Promise<{
     staffEmail: string;
     supervisorEmail: string | null;
@@ -235,7 +235,7 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   private async resolveStaffName(
     conn: mysql.PoolConnection,
-    staffId: number,
+    staffId: string,
   ): Promise<string> {
     const [[empRow]] = await conn.query<mysql.RowDataPacket[]>(
       `SELECT CONCAT(first_name, ' ', last_name) AS full_name
@@ -287,7 +287,7 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   private async validateBalanceForType(
     conn: mysql.PoolConnection,
-    staffId: number,
+    staffId: string,
     leaveTypeId: string,
     requiredHours: number,
     currentYear: number,
@@ -486,11 +486,10 @@ export class LeavesService {
 
       // Upload PDF now that we have a real leaveId — key: leaves/{leaveId}/...
       if (file) {
-        const multerFile = file as Express.Multer.File;
         documentKey = await this.s3Service.uploadLeavePdf(
           leaveId,
-          multerFile.buffer,
-          multerFile.originalname,
+          Buffer.from(file.buffer),
+          file.originalname,
         );
         await conn.query(`UPDATE leaves SET document_key = ? WHERE id = ?`, [
           documentKey,

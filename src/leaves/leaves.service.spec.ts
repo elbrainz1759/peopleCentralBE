@@ -92,7 +92,7 @@ const baseHandoverNote = {
 };
 
 const baseDto = {
-  staffId: 10,
+  staffId: "10",
   reason: 'Rest',
   handoverNotes: [
     { staffEmail: 'colleague@mc.org', note: 'Please cover the Monday standup' },
@@ -533,9 +533,9 @@ beforeEach(() => {
       queueMocks(conn, [[[{ total: 0 }]], [[]], [[]], [[]]]);
 
       const service = await buildService(conn);
-      await service.findAll({ page: 1, limit: 10, staffId: 10 });
+      await service.findAll({ page: 1, limit: 10, staffId: "10" });
 
-      expect(conn.query.mock.calls[0][1]).toContain(10);
+      expect(conn.query.mock.calls[0][1]).toContain("10");
     });
 
     it('throws InternalServerErrorException on db error', async () => {
