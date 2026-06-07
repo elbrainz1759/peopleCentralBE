@@ -81,6 +81,7 @@ export interface Clearance {
 export interface ClearanceStatusResult {
   exit_interview_id: string;
   stage: string;
+  status: string;
   supervisor_cleared: 'Yes' | 'No' | 'Pending';
   hr_cleared: 'Yes' | 'No' | 'Pending';
   operations_cleared: 'Yes' | 'No' | 'Pending';
@@ -121,30 +122,37 @@ const DETAIL_JOINS = `
   LEFT JOIN programs p    ON p.unique_id = ei.program_id
 `;
 
-// ─── Stage flow ───────────────────────────────────────────────────────────────
-// Employee submits   → stage: Supervisor
-// Supervisor clears  → stage: HR
-// HR clears          → stage: Operations
-// Operations clears  → stage: Finance (or HR_Director if Finance already done)
-// Finance clears     → stage: HR_Director (or stays if Ops not done)
-// HR_Director clears → stage: Completed, status: Completed
+// ─── Stage / Status flow ──────────────────────────────────────────────────────
+// status: Pending      stage: Supervisor  → status: Operations   stage: Operations
+// status: Operations   stage: Operations  → status: Finance       stage: Finance
+// status: Finance      stage: Finance     → status: HR            stage: HR
+// status: HR           stage: HR          → status: HR_Director   stage: HR_Director
+// status: HR_Director  stage: HR_Director → status: Approved      stage: Completed
 
 type ClearDepartment =
   | 'Supervisor'
-  | 'HR'
   | 'Operations'
   | 'Finance'
+  | 'HR'
   | 'HR_Director';
 
 const COL_MAP: Record<ClearDepartment, { flag: string; date: string }> = {
   Supervisor: { flag: 'supervisor_cleared', date: 'supervisor_cleared_date' },
-  HR: { flag: 'hr_cleared', date: 'hr_cleared_date' },
   Operations: { flag: 'operations_cleared', date: 'operations_cleared_date' },
   Finance: { flag: 'finance_cleared', date: 'finance_cleared_date' },
+  HR: { flag: 'hr_cleared', date: 'hr_cleared_date' },
   HR_Director: {
     flag: 'hr_director_cleared',
     date: 'hr_director_cleared_date',
   },
+};
+
+const NEXT_STAGE: Record<ClearDepartment, { status: string; stage: string }> = {
+  Supervisor: { status: 'Operations', stage: 'Operations' },
+  Operations: { status: 'Finance', stage: 'Finance' },
+  Finance: { status: 'HR', stage: 'HR' },
+  HR: { status: 'HR_Director', stage: 'HR_Director' },
+  HR_Director: { status: 'Approved', stage: 'Completed' },
 };
 
 @Injectable()
@@ -297,8 +305,8 @@ export class ExitInterviewService {
           dto.benefitHolidays ?? null,
           dto.benefitEducation ?? null,
           dto.wouldRecommend ?? null,
-          dto.stage ?? 'Supervisor',
-          dto.status ?? 'Pending',
+          'Supervisor',
+          'Pending',
           created_by,
         ],
       );
@@ -309,8 +317,8 @@ export class ExitInterviewService {
         'Exit interview submitted',
         created_by,
         {
-          toStage: dto.stage ?? 'Supervisor',
-          toStatus: dto.status ?? 'Pending',
+          toStage: 'Supervisor',
+          toStatus: 'Pending',
         },
       );
 
@@ -478,12 +486,12 @@ export class ExitInterviewService {
     try {
       const colMap: Record<string, string> = {
         Supervisor: 'supervisor_cleared',
-        HR: 'hr_cleared',
         Operations: 'operations_cleared',
         Finance: 'finance_cleared',
+        HR: 'hr_cleared',
         HR_Director: 'hr_director_cleared',
       };
-      const col = colMap[department] ?? 'operations_cleared';
+      const col = colMap[department] ?? 'supervisor_cleared';
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT COUNT(*) AS total
@@ -537,27 +545,22 @@ export class ExitInterviewService {
       );
 
       const supVal = row['supervisor_cleared'] as 'Yes' | 'No' | 'Pending';
-      const hrVal = row['hr_cleared'] as 'Yes' | 'No' | 'Pending';
       const opsVal = row['operations_cleared'] as 'Yes' | 'No' | 'Pending';
       const finVal = row['finance_cleared'] as 'Yes' | 'No' | 'Pending';
+      const hrVal = row['hr_cleared'] as 'Yes' | 'No' | 'Pending';
       const dirVal = row['hr_director_cleared'] as 'Yes' | 'No' | 'Pending';
 
       return {
         exit_interview_id: id,
         stage: row['stage'] as string,
+        status: row['status'] as string,
         supervisor_cleared: supVal,
-        hr_cleared: hrVal,
         operations_cleared: opsVal,
         finance_cleared: finVal,
+        hr_cleared: hrVal,
         hr_director_cleared: dirVal,
-        hr_can_finalize:
-          opsVal === 'Yes' && finVal === 'Yes' && hrVal === 'Yes',
-        completed:
-          supVal === 'Yes' &&
-          hrVal === 'Yes' &&
-          opsVal === 'Yes' &&
-          finVal === 'Yes' &&
-          dirVal === 'Yes',
+        hr_can_finalize: row['stage'] === 'HR_Director',
+        completed: row['stage'] === 'Completed',
         clearances: clearances as Clearance[],
       };
     } catch (err) {
@@ -583,17 +586,14 @@ export class ExitInterviewService {
       await conn.beginTransaction();
 
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT stage, status, supervisor_cleared, hr_cleared,
-                operations_cleared, finance_cleared, hr_director_cleared
-         FROM exit_interviews WHERE unique_id = ?`,
+        `SELECT stage, status FROM exit_interviews WHERE unique_id = ?`,
         [id],
       );
       if (!existing.length)
         throw new NotFoundException(`Exit interview with id ${id} not found`);
 
-      const current = existing[0];
-      const fromStage = current['stage'] as string;
-      const fromStatus = current['status'] as string;
+      const fromStage = existing[0]['stage'] as string;
+      const fromStatus = existing[0]['status'] as string;
 
       // Insert clearance rows — IGNORE duplicates
       for (const itemId of checkListItemIds) {
@@ -621,7 +621,14 @@ export class ExitInterviewService {
         [id],
       );
 
-      // Audit: clearance submitted
+      // Advance stage and status — no conditional logic needed
+      const { status: nextStatus, stage: nextStage } = NEXT_STAGE[department];
+      await conn.execute(
+        `UPDATE exit_interviews SET stage = ?, status = ? WHERE unique_id = ?`,
+        [nextStage, nextStatus, id],
+      );
+
+      // Audit log — one entry covering both clearance and stage advance
       await this.writeAuditLog(
         conn,
         id,
@@ -629,65 +636,12 @@ export class ExitInterviewService {
         clearedBy,
         {
           fromStage,
+          toStage: nextStage,
           fromStatus,
+          toStatus: nextStatus,
           notes,
         },
       );
-
-      // Re-fetch flags to determine next stage
-      const [[updated]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT operations_cleared, finance_cleared
-         FROM exit_interviews WHERE unique_id = ?`,
-        [id],
-      );
-
-      const opsDone = updated['operations_cleared'] === 'Yes';
-      const finDone = updated['finance_cleared'] === 'Yes';
-
-      let nextStage: string | null = null;
-      let nextStatus: string | null = null;
-
-      switch (department) {
-        case 'Supervisor':
-          nextStage = 'HR';
-          nextStatus = 'In_Progress';
-          break;
-        case 'HR':
-          nextStage = 'Operations';
-          break;
-        case 'Operations':
-          nextStage = finDone ? 'HR_Director' : 'Finance';
-          break;
-        case 'Finance':
-          nextStage = opsDone ? 'HR_Director' : 'Finance';
-          break;
-        case 'HR_Director':
-          nextStage = 'Completed';
-          nextStatus = 'Completed';
-          break;
-      }
-
-      if (nextStage) {
-        await conn.execute(
-          `UPDATE exit_interviews
-           SET stage = ?, status = COALESCE(?, status)
-           WHERE unique_id = ?`,
-          [nextStage, nextStatus, id],
-        );
-
-        await this.writeAuditLog(
-          conn,
-          id,
-          `Stage advanced to ${nextStage}`,
-          clearedBy,
-          {
-            fromStage,
-            toStage: nextStage,
-            fromStatus,
-            toStatus: nextStatus ?? fromStatus,
-          },
-        );
-      }
 
       await conn.commit();
       return this.getClearanceStatus(id);
@@ -701,28 +655,21 @@ export class ExitInterviewService {
   }
 
   // ---------------------------------------------------------------------------
-  // PATCH /exit-interviews/:id/finalize
+  // PATCH /exit-interviews/:id/finalize  (HR Director sign-off)
   // ---------------------------------------------------------------------------
   async finalize(id: string, user: RequestUser): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
     try {
       const [[row]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT stage, status, supervisor_cleared, hr_cleared,
-                operations_cleared, finance_cleared
-         FROM exit_interviews WHERE unique_id = ?`,
+        `SELECT stage, status FROM exit_interviews WHERE unique_id = ?`,
         [id],
       );
       if (!row)
         throw new NotFoundException(`Exit interview with id ${id} not found`);
 
-      if (
-        row['supervisor_cleared'] !== 'Yes' ||
-        row['hr_cleared'] !== 'Yes' ||
-        row['operations_cleared'] !== 'Yes' ||
-        row['finance_cleared'] !== 'Yes'
-      ) {
+      if (row['stage'] !== 'HR_Director') {
         throw new InternalServerErrorException(
-          'Cannot finalize: Supervisor, HR, Operations and Finance must all clear first.',
+          `Cannot finalize: interview must be at HR_Director stage. Current stage: ${row['stage'] as string}`,
         );
       }
 
@@ -732,7 +679,7 @@ export class ExitInterviewService {
 
       await conn.execute(
         `UPDATE exit_interviews
-         SET stage = 'Completed', status = 'Completed',
+         SET stage = 'Completed', status = 'Approved',
              hr_director_cleared = 'Yes', hr_director_cleared_date = CURDATE()
          WHERE unique_id = ?`,
         [id],
@@ -741,13 +688,13 @@ export class ExitInterviewService {
       await this.writeAuditLog(
         conn,
         id,
-        'Exit interview finalized',
+        'Exit interview finalized by HR Director',
         finalizedBy,
         {
           fromStage,
           toStage: 'Completed',
           fromStatus,
-          toStatus: 'Completed',
+          toStatus: 'Approved',
         },
       );
 
