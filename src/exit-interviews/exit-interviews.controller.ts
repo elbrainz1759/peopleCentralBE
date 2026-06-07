@@ -29,7 +29,7 @@ export class ExitInterviewController {
 
   // GET /exit-interviews/dashboard
   @Get('dashboard')
-  getDashboard(): Promise<Record<string, any>> {
+  getDashboard(): Promise<Record<string, unknown>> {
     return this.exitInterviewService.getDashboard();
   }
 
@@ -51,7 +51,7 @@ export class ExitInterviewController {
     return this.exitInterviewService.findAll(query);
   }
 
-  // GET /exit-interviews/pending/:department  — Operations | Finance queue
+  // GET /exit-interviews/pending/:department
   @Get('pending/:department')
   findPendingByDepartment(
     @Param('department') department: string,
@@ -89,6 +89,12 @@ export class ExitInterviewController {
     return this.exitInterviewService.getClearanceStatus(id);
   }
 
+  // GET /exit-interviews/:id/audit-log
+  @Get(':id/audit-log')
+  getAuditLog(@Param('id') id: string) {
+    return this.exitInterviewService.getAuditLog(id);
+  }
+
   // GET /exit-interviews/:id
   @Get(':id')
   findOne(@Param('id') id: string): Promise<ExitInterviewDetail> {
@@ -100,19 +106,31 @@ export class ExitInterviewController {
   clearDepartment(
     @Param('id') id: string,
     @Body() dto: ClearDepartmentDto,
+    @Req() req: Request,
   ): Promise<ClearanceStatusResult> {
+    const user = req.user as RequestUser;
     return this.exitInterviewService.clearDepartment(
       id,
-      dto.department,
+      dto.department as
+        | 'Supervisor'
+        | 'HR'
+        | 'Operations'
+        | 'Finance'
+        | 'HR_Director',
+      user.email,
       dto.checkListItemIds,
       dto.notes,
     );
   }
 
-  // PATCH /exit-interviews/:id/finalize  (HR final submission)
+  // PATCH /exit-interviews/:id/finalize
   @Patch(':id/finalize')
-  finalize(@Param('id') id: string): Promise<ExitInterviewDetail> {
-    return this.exitInterviewService.finalize(id);
+  finalize(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<ExitInterviewDetail> {
+    const user = req.user as RequestUser;
+    return this.exitInterviewService.finalize(id, user);
   }
 
   // PATCH /exit-interviews/:id
@@ -120,8 +138,10 @@ export class ExitInterviewController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateExitInterviewDto,
+    @Req() req: Request,
   ): Promise<ExitInterviewDetail> {
-    return this.exitInterviewService.update(id, dto);
+    const user = req.user as RequestUser;
+    return this.exitInterviewService.update(id, dto, user);
   }
 
   // DELETE /exit-interviews/:id
