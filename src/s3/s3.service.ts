@@ -53,8 +53,6 @@ export class S3Service {
           Key: key,
           Body: buffer,
           ContentType: 'application/pdf',
-          // private by default — access via presigned URL only
-          ACL: 'private',
           Metadata: {
             leaveId: String(leaveId),
             originalName,

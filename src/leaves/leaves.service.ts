@@ -384,6 +384,7 @@ export class LeavesService {
     const conn = await this.pool.getConnection();
     let documentKey: string | null = null;
 
+    console.log('Creating leave with DTO:', dto);
     try {
       // 1. Internal overlap check
       const internalOverlap = findInternalOverlap(dto.leaveDuration);

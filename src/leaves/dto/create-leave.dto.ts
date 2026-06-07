@@ -24,6 +24,7 @@ export class LeaveDurationDto {
 
 export class HandoverNoteDto {
   @IsEmail()
+  @IsNotEmpty()
   staffEmail: string = '';
 
   @IsString()
@@ -42,9 +43,14 @@ export class CreateLeaveDto {
 
   @Transform(({ value }: { value: unknown }) => {
     try {
-      return typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+      const parsed: unknown =
+        typeof value === 'string' ? JSON.parse(value) : value;
+      if (!Array.isArray(parsed)) return [];
+      return (parsed as Record<string, unknown>[]).map((item) =>
+        Object.assign(new HandoverNoteDto(), item),
+      );
     } catch {
-      return value;
+      return [];
     }
   })
   @IsArray()
@@ -54,9 +60,14 @@ export class CreateLeaveDto {
 
   @Transform(({ value }: { value: unknown }) => {
     try {
-      return typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+      const parsed: unknown =
+        typeof value === 'string' ? JSON.parse(value) : value;
+      if (!Array.isArray(parsed)) return [];
+      return (parsed as Record<string, unknown>[]).map((item) =>
+        Object.assign(new LeaveDurationDto(), item),
+      );
     } catch {
-      return value;
+      return [];
     }
   })
   @IsArray()
