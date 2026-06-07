@@ -6,7 +6,7 @@ import {
   IsString,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class LeaveDurationDto {
   @IsString()
@@ -40,11 +40,25 @@ export class CreateLeaveDto {
   @IsOptional()
   reason?: string;
 
+  @Transform(({ value }: { value: unknown }) => {
+    try {
+      return typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+    } catch {
+      return value;
+    }
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => HandoverNoteDto)
   handoverNotes: HandoverNoteDto[] = [];
 
+  @Transform(({ value }: { value: unknown }) => {
+    try {
+      return typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+    } catch {
+      return value;
+    }
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => LeaveDurationDto)
