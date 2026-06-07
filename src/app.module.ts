@@ -27,6 +27,7 @@ import { RolesController } from './roles/roles.controller';
 import { RolesModule } from './roles/roles.module';
 import { MailService } from './mail/mail.service';
 import { MailModule } from './mail/mail.module';
+import { S3Service } from './s3/s3.service';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { MailModule } from './mail/mail.module';
     },
     RolesService,
     MailService,
+    S3Service,
   ],
 })
 export class AppModule {}

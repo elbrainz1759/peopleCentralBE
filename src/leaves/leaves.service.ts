@@ -18,6 +18,7 @@ import {
 } from '../utils/leave-hours.util';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 import { MailService } from 'src/mail/mail.service';
+import { S3Service } from '../s3/s3.service';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -195,6 +196,7 @@ export class LeavesService {
   constructor(
     @Inject('MYSQL_POOL') private readonly pool: mysql.Pool,
     private readonly mailService: MailService,
+    private readonly s3Service: S3Service,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -374,8 +376,14 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   // POST /leaves
   // ---------------------------------------------------------------------------
-  async create(dto: CreateLeaveDto, user: RequestUser): Promise<Leave> {
+  async create(
+    dto: CreateLeaveDto,
+    user: RequestUser,
+    file?: Express.Multer.File,
+  ): Promise<Leave> {
     const conn = await this.pool.getConnection();
+    let documentKey: string | null = null;
+
     try {
       // 1. Internal overlap check
       const internalOverlap = findInternalOverlap(dto.leaveDuration);
@@ -411,10 +419,10 @@ export class LeavesService {
       // 4. No overlap with existing active leaves
       const [existingDurations] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ld.start_date, ld.end_date
-         FROM   leave_durations ld
-         INNER JOIN leaves l ON l.id = ld.leave_id
-         WHERE  l.staff_id = ?
-           AND  l.status   IN ('Pending', 'Reviewed', 'Approved')`,
+       FROM   leave_durations ld
+       INNER JOIN leaves l ON l.id = ld.leave_id
+       WHERE  l.staff_id = ?
+         AND  l.status   IN ('Pending', 'Reviewed', 'Approved')`,
         [dto.staffId],
       );
       for (const existing of existingDurations) {
@@ -470,26 +478,39 @@ export class LeavesService {
       const unique_id = randomBytes(16).toString('hex');
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leaves
-           (unique_id, staff_id, reason, total_hours, status, created_by)
-         VALUES (?, ?, ?, ?, 'Pending', ?)`,
+         (unique_id, staff_id, reason, total_hours, status, created_by)
+       VALUES (?, ?, ?, ?, 'Pending', ?)`,
         [unique_id, dto.staffId, dto.reason, totalHours, user.email],
       );
       const leaveId = result.insertId;
+
+      // Upload PDF now that we have a real leaveId — key: leaves/{leaveId}/...
+      if (file) {
+        const multerFile = file as Express.Multer.File;
+        documentKey = await this.s3Service.uploadLeavePdf(
+          leaveId,
+          multerFile.buffer,
+          multerFile.originalname,
+        );
+        await conn.query(`UPDATE leaves SET document_key = ? WHERE id = ?`, [
+          documentKey,
+          leaveId,
+        ]);
+      }
 
       for (const d of dto.leaveDuration) {
         const hours = calculateHoursForRange(d.startDate, d.endDate);
         await conn.query(
           `INSERT INTO leave_durations (leave_id, leave_type_id, start_date, end_date, hours)
-           VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?)`,
           [leaveId, d.leaveTypeId, d.startDate, d.endDate, hours],
         );
       }
 
-      // Insert handover notes
       for (const hn of dto.handoverNotes) {
         await conn.query(
           `INSERT INTO handover_notes (unique_id, leave_id, staff_email, note)
-           VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?)`,
           [randomBytes(16).toString('hex'), leaveId, hn.staffEmail, hn.note],
         );
       }
@@ -508,7 +529,6 @@ export class LeavesService {
           leave.durations ?? [],
         );
 
-        // Leave submission notification
         const message = msgCreated(
           staffName,
           breakdown,
@@ -537,7 +557,6 @@ export class LeavesService {
         if (hrEmails.length)
           await this.mailService.sendToMany(hrEmails, mailOpts);
 
-        // Handover notifications — one per assignee
         for (const hn of dto.handoverNotes) {
           await this.mailService.sendCaseNotification({
             to: hn.staffEmail,
@@ -558,14 +577,24 @@ export class LeavesService {
       }
 
       return leave;
-    } catch (err) {
+    } catch (err: unknown) {
       await conn.rollback();
+
+      // If the transaction failed after a successful S3 upload, delete the orphan
+      if (documentKey) {
+        await this.s3Service.deleteFile(documentKey).catch(() => {
+          /* best-effort — log separately if needed */
+        });
+      }
+
       if (
         err instanceof BadRequestException ||
         err instanceof ConflictException
       )
         throw err;
-      throw new InternalServerErrorException(err);
+      throw new InternalServerErrorException(
+        err instanceof Error ? err.message : undefined,
+      );
     } finally {
       conn.release();
     }
@@ -664,8 +693,10 @@ export class LeavesService {
         data,
         meta: { total, page, limit, last_page: Math.ceil(total / limit) },
       };
-    } catch (err) {
-      throw new InternalServerErrorException(err);
+    } catch (err: unknown) {
+      throw new InternalServerErrorException(
+        err instanceof Error ? err.message : undefined,
+      );
     } finally {
       conn.release();
     }
@@ -698,9 +729,11 @@ export class LeavesService {
       leave.handoverNotes = await this.fetchHandoverNotes(conn, id);
 
       return leave;
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof NotFoundException) throw err;
-      throw new InternalServerErrorException(err);
+      throw new InternalServerErrorException(
+        err instanceof Error ? err.message : undefined,
+      );
     } finally {
       conn.release();
     }
@@ -771,13 +804,15 @@ export class LeavesService {
       }
 
       return updated;
-    } catch (err) {
+    } catch (err: unknown) {
       if (
         err instanceof NotFoundException ||
         err instanceof BadRequestException
       )
         throw err;
-      throw new InternalServerErrorException(err);
+      throw new InternalServerErrorException(
+        err instanceof Error ? err.message : undefined,
+      );
     } finally {
       conn.release();
     }

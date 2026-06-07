@@ -10,13 +10,18 @@ import {
   HttpCode,
   HttpStatus,
   Req,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { LeavesService } from './leaves.service';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { CancelLeaveDto } from './dto/cancel-leave.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 import type { Request } from 'express';
+import multer from 'multer';
 
 @Controller('leaves')
 export class LeavesController {
@@ -24,13 +29,32 @@ export class LeavesController {
 
   // ---------------------------------------------------------------------------
   // POST /leaves
-  // Staff submits a new leave request.
+  // Multipart form-data: JSON fields + optional `document` PDF file.
   // ---------------------------------------------------------------------------
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateLeaveDto, @Req() req: Request) {
+  @UseInterceptors(
+    FileInterceptor('document', {
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+      fileFilter: (_req, file, cb) => {
+        if (file.mimetype !== 'application/pdf') {
+          return cb(
+            new BadRequestException('Only PDF files are accepted'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  create(
+    @Body() dto: CreateLeaveDto,
+    @Req() req: Request,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
     const user = req.user as RequestUser;
-    return this.leavesService.create(dto, user);
+    return this.leavesService.create(dto, user, file);
   }
 
   // ---------------------------------------------------------------------------
@@ -51,7 +75,6 @@ export class LeavesController {
 
   // ---------------------------------------------------------------------------
   // GET /leaves/:id/cancellation
-  // Returns the audit record for a cancelled leave.
   // ---------------------------------------------------------------------------
   @Get(':id/cancellation')
   findCancellation(@Param('id', ParseIntPipe) id: number) {
@@ -60,7 +83,6 @@ export class LeavesController {
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/review  (HR)
-  // Moves Pending → Reviewed. Actor name taken from the authenticated user.
   // ---------------------------------------------------------------------------
   @Patch(':id/review')
   review(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
@@ -70,8 +92,6 @@ export class LeavesController {
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/approve  (Supervisor)
-  // Moves Reviewed → Approved and deducts hours from the balance.
-  // Actor name taken from the authenticated user.
   // ---------------------------------------------------------------------------
   @Patch(':id/approve')
   approve(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
@@ -81,8 +101,6 @@ export class LeavesController {
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/reject  (HR or Supervisor)
-  // Moves Pending / Reviewed / Approved → Rejected.
-  // If the leave was Approved, hours are restored to the balance automatically.
   // ---------------------------------------------------------------------------
   @Patch(':id/reject')
   reject(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
@@ -92,8 +110,6 @@ export class LeavesController {
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/cancel  (Staff self-service)
-  // Staff can cancel their own Pending or Reviewed leave.
-  // Approved leaves must be rejected by a supervisor/HR instead.
   // ---------------------------------------------------------------------------
   @Patch(':id/cancel')
   cancel(
