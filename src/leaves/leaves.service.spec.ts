@@ -95,27 +95,64 @@ const baseDto = {
   ],
 };
 
-// ─── Query sequence helpers ───────────────────────────────────────────────────
-// findOne() opens its own connection and always runs:
-//   1. SELECT l.* FROM leaves
-//   2. SELECT ld.* + lt.name FROM leave_durations
-//   3. SELECT * FROM handover_notes   (fetchHandoverNotes)
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const findOneSeq = (
-  leave = baseLeave,
-  durations = [baseDuration],
-  handoverNotes = [baseHandoverNote],
-) => [
-  [[leave]],
-  [[...durations]],
-  [[...handoverNotes]],
-];
+/**
+ * Pipes a fixed sequence of resolved values onto conn.query in order.
+ * Avoids the spread-in-chain TS error by using a plain loop.
+ */
+function queueMocks(
+  conn: ReturnType<typeof makeConn>,
+  responses: unknown[],
+): void {
+  for (const r of responses) {
+    conn.query.mockResolvedValueOnce(r);
+  }
+}
 
-const notificationSeq = () => [
-  [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]], // resolveEmailRecipients — staff/supervisor
-  [[{ email: 'hr@mc.org' }]],                                          // resolveEmailRecipients — HR
-  [[{ full_name: 'John Doe' }]],                                        // resolveStaffName
-];
+/**
+ * Standard create() happy-path sequence (single leave type, one handover note):
+ *
+ * Pre-transaction:
+ *   [0]  leave type existence check
+ *   [1]  existing durations overlap check
+ *   [2]  validateBalanceForType — employee country
+ *   [3]  validateBalanceForType — leave_type_country_config
+ *   [4]  validateBalanceForType — used hours SUM
+ *
+ * Transaction:
+ *   [5]  INSERT leaves
+ *   [6]  INSERT leave_durations
+ *   [7]  INSERT handover_notes
+ *
+ * findOne() after commit:
+ *   [8]  SELECT l.*
+ *   [9]  SELECT ld.* + lt.name
+ *   [10] SELECT handover_notes
+ *
+ * Notifications:
+ *   [11] resolveEmailRecipients — staff/supervisor
+ *   [12] resolveEmailRecipients — HR list
+ *   [13] resolveStaffName
+ */
+function setupCreateMocks(conn: ReturnType<typeof makeConn>): void {
+  queueMocks(conn, [
+    [{ unique_id: 'lt-uid-001' }],                                       // [0]
+    [],                                                                    // [1]
+    [{ country: 'Nigeria' }],                                             // [2]
+    [{ annual_hours: 160, monthly_accrual_hours: null }],                 // [3]
+    [{ used_hours: 0 }],                                                  // [4]
+    { insertId: 1 },                                                       // [5]
+    { insertId: 1 },                                                       // [6]
+    { insertId: 1 },                                                       // [7]
+    [baseLeave],                                                           // [8]
+    [baseDuration],                                                        // [9]
+    [baseHandoverNote],                                                    // [10]
+    [{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }],   // [11]
+    [{ email: 'hr@mc.org' }],                                             // [12]
+    [{ full_name: 'John Doe' }],                                          // [13]
+  ]);
+}
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -130,64 +167,9 @@ describe('LeavesService', () => {
   // ── create ──────────────────────────────────────────────────────────────────
 
   describe('create', () => {
-    /**
-     * Standard happy-path sequence for create():
-     *
-     * Pre-transaction validation:
-     *   [0]  leave type existence check
-     *   [1]  existing durations overlap check
-     *   [2]  validateBalanceForType — employee country
-     *   [3]  validateBalanceForType — leave_type_country_config
-     *   [4]  validateBalanceForType — used hours SUM
-     *
-     * Transaction:
-     *   [5]  INSERT leaves
-     *   [6]  INSERT leave_durations (one per range)
-     *   [7]  INSERT handover_notes  (one per note)
-     *
-     * findOne() after commit:
-     *   [8]  SELECT l.*
-     *   [9]  SELECT ld.* + lt.name
-     *   [10] SELECT handover_notes
-     *
-     * Notifications:
-     *   [11] resolveEmailRecipients — staff/supervisor
-     *   [12] resolveEmailRecipients — HR list
-     *   [13] resolveStaffName
-     */
-    const setupCreateConn = () => {
-      const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])            // [0]
-        .mockResolvedValueOnce([[]])                                        // [1]
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])                 // [2]
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]]) // [3]
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])                      // [4]
-        .mockResolvedValueOnce([{ insertId: 1 }])                          // [5]
-        .mockResolvedValueOnce([{ insertId: 1 }])                          // [6]
-        .mockResolvedValueOnce([{ insertId: 1 }])                          // [7]
-        ...findOneSeq().map((v) => conn.query.mockResolvedValueOnce(v))    // [8-10]
-        ...notificationSeq().map((v) => conn.query.mockResolvedValueOnce(v)); // [11-13]
-      return conn;
-    };
-
     it('creates a leave, persists durations and handover notes, commits', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT leaves
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT leave_durations
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT handover_notes
-        .mockResolvedValueOnce([[baseLeave]])        // findOne — leave
-        .mockResolvedValueOnce([[baseDuration]])     // findOne — durations
-        .mockResolvedValueOnce([[baseHandoverNote]]) // findOne — handover_notes
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]])
-        .mockResolvedValueOnce([[{ email: 'hr@mc.org' }]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      setupCreateMocks(conn);
 
       const service = await buildService(conn);
       const result = await service.create(baseDto, mockUser);
@@ -199,7 +181,6 @@ describe('LeavesService', () => {
       expect(conn.beginTransaction).toHaveBeenCalled();
       expect(conn.commit).toHaveBeenCalled();
 
-      // Verify handover_notes INSERT was called
       const handoverInsert = conn.query.mock.calls.find(
         (c) => (c[0] as string).includes('INSERT INTO handover_notes'),
       );
@@ -218,22 +199,23 @@ describe('LeavesService', () => {
       };
 
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT leaves
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT leave_durations
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT handover_notes a@
-        .mockResolvedValueOnce([{ insertId: 2 }])   // INSERT handover_notes b@
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [],
+        [{ country: 'Nigeria' }],
+        [{ annual_hours: 160, monthly_accrual_hours: null }],
+        [{ used_hours: 0 }],
+        { insertId: 1 },  // INSERT leaves
+        { insertId: 1 },  // INSERT leave_durations
+        { insertId: 1 },  // INSERT handover_notes a@
+        { insertId: 2 },  // INSERT handover_notes b@
+        [baseLeave],
+        [baseDuration],
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       await service.create(dto, mockUser);
@@ -256,22 +238,23 @@ describe('LeavesService', () => {
       };
 
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([{ insertId: 2 }])
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]])
-        .mockResolvedValueOnce([[{ email: 'hr@mc.org' }]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [],
+        [{ country: 'Nigeria' }],
+        [{ annual_hours: 160, monthly_accrual_hours: null }],
+        [{ used_hours: 0 }],
+        { insertId: 1 },
+        { insertId: 1 },
+        { insertId: 1 },  // handover a@
+        { insertId: 2 },  // handover b@
+        [baseLeave],
+        [baseDuration],
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }],
+        [{ email: 'hr@mc.org' }],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       await service.create(dto, mockUser);
@@ -288,25 +271,28 @@ describe('LeavesService', () => {
       const dto = { ...baseDto, handoverNotes: [] };
 
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[]])  // no handover notes
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [],
+        [{ country: 'Nigeria' }],
+        [{ annual_hours: 160, monthly_accrual_hours: null }],
+        [{ used_hours: 0 }],
+        { insertId: 1 },  // INSERT leaves
+        { insertId: 1 },  // INSERT leave_durations
+        // no handover inserts
+        [baseLeave],
+        [baseDuration],
+        [],               // empty handover_notes
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       const result = await service.create(dto, mockUser);
 
       expect(result.handoverNotes).toHaveLength(0);
+
       const handoverInserts = conn.query.mock.calls.filter(
         (c) => (c[0] as string).includes('INSERT INTO handover_notes'),
       );
@@ -328,28 +314,27 @@ describe('LeavesService', () => {
       };
 
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-002' }]])
-        .mockResolvedValueOnce([[]])
-        // balance lt-uid-001
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        // balance lt-uid-002
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 80, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT leaves
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT duration 1
-        .mockResolvedValueOnce([{ insertId: 2 }])   // INSERT duration 2
-        .mockResolvedValueOnce([{ insertId: 1 }])   // INSERT handover_notes
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [{ unique_id: 'lt-uid-002' }],
+        [],
+        [{ country: 'Nigeria' }],
+        [{ annual_hours: 160, monthly_accrual_hours: null }],
+        [{ used_hours: 0 }],
+        [{ country: 'Nigeria' }],
+        [{ annual_hours: 80, monthly_accrual_hours: null }],
+        [{ used_hours: 0 }],
+        { insertId: 1 },  // INSERT leaves
+        { insertId: 1 },  // INSERT duration 1
+        { insertId: 2 },  // INSERT duration 2
+        { insertId: 1 },  // INSERT handover_notes
+        [baseLeave],
+        [baseDuration],
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       const result = await service.create(dto, mockUser);
@@ -382,7 +367,7 @@ describe('LeavesService', () => {
 
     it('throws BadRequestException when leave type does not exist', async () => {
       const conn = makeConn();
-      conn.query.mockResolvedValueOnce([[]]); // leave type not found
+      conn.query.mockResolvedValueOnce([]); // empty — leave type not found
 
       const service = await buildService(conn);
       await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
@@ -391,9 +376,10 @@ describe('LeavesService', () => {
     it('throws ConflictException when range overlaps existing leave', async () => {
       (rangesOverlap as jest.Mock).mockReturnValue(true);
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[{ start_date: '2025-02-01', end_date: '2025-02-01' }]]);
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [{ start_date: '2025-02-01', end_date: '2025-02-01' }],
+      ]);
 
       const service = await buildService(conn);
       await expect(service.create(baseDto, mockUser)).rejects.toThrow(ConflictException);
@@ -402,9 +388,10 @@ describe('LeavesService', () => {
     it('throws BadRequestException when all ranges produce 0 working hours', async () => {
       (calculateHoursForRange as jest.Mock).mockReturnValue(0);
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]]); // no existing durations
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [],
+      ]);
 
       const service = await buildService(conn);
       await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
@@ -412,12 +399,13 @@ describe('LeavesService', () => {
 
     it('throws BadRequestException when balance is insufficient', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 8, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 8 }]]); // fully consumed
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [],
+        [{ country: 'Nigeria' }],
+        [{ annual_hours: 8, monthly_accrual_hours: null }],
+        [{ used_hours: 8 }], // fully consumed
+      ]);
 
       const service = await buildService(conn);
       await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
@@ -426,11 +414,12 @@ describe('LeavesService', () => {
 
     it('throws BadRequestException when no leave policy configured for country', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[]]); // no config row
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [],
+        [{ country: 'Nigeria' }],
+        [], // no config row
+      ]);
 
       const service = await buildService(conn);
       await expect(service.create(baseDto, mockUser)).rejects.toThrow(BadRequestException);
@@ -440,21 +429,7 @@ describe('LeavesService', () => {
       mockMailService.sendCaseNotification.mockRejectedValueOnce(new Error('SMTP down'));
 
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      setupCreateMocks(conn);
 
       const service = await buildService(conn);
       const result = await service.create(baseDto, mockUser);
@@ -465,13 +440,14 @@ describe('LeavesService', () => {
 
     it('rolls back and throws InternalServerErrorException on unexpected db error', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ unique_id: 'lt-uid-001' }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockRejectedValueOnce(new Error('DB crash')); // INSERT leaves fails
+      queueMocks(conn, [
+        [{ unique_id: 'lt-uid-001' }],
+        [],
+        [{ country: 'Nigeria' }],
+        [{ annual_hours: 160, monthly_accrual_hours: null }],
+        [{ used_hours: 0 }],
+      ]);
+      conn.query.mockRejectedValueOnce(new Error('DB crash')); // INSERT leaves fails
 
       const service = await buildService(conn);
       await expect(service.create(baseDto, mockUser)).rejects.toThrow(
@@ -486,11 +462,12 @@ describe('LeavesService', () => {
   describe('findAll', () => {
     it('returns paginated leaves with durations and handover notes attached', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ total: 1 }]])
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])     // durations batch
-        .mockResolvedValueOnce([[baseHandoverNote]]); // handover_notes batch
+      queueMocks(conn, [
+        [{ total: 1 }],
+        [baseLeave],
+        [baseDuration],
+        [baseHandoverNote],
+      ]);
 
       const service = await buildService(conn);
       const result = await service.findAll({ page: 1, limit: 10 });
@@ -507,11 +484,12 @@ describe('LeavesService', () => {
       const hn2 = { ...baseHandoverNote, id: 2, leave_id: 2, staff_email: 'other@mc.org' };
 
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ total: 2 }]])
-        .mockResolvedValueOnce([[baseLeave, leave2]])
-        .mockResolvedValueOnce([[baseDuration, { ...baseDuration, id: 2, leave_id: 2 }]])
-        .mockResolvedValueOnce([[baseHandoverNote, hn2]]);
+      queueMocks(conn, [
+        [{ total: 2 }],
+        [baseLeave, leave2],
+        [baseDuration, { ...baseDuration, id: 2, leave_id: 2 }],
+        [baseHandoverNote, hn2],
+      ]);
 
       const service = await buildService(conn);
       const result = await service.findAll({ page: 1, limit: 10 });
@@ -522,11 +500,12 @@ describe('LeavesService', () => {
 
     it('returns empty handoverNotes array when leave has none', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ total: 1 }]])
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[]]); // no handover notes
+      queueMocks(conn, [
+        [{ total: 1 }],
+        [baseLeave],
+        [baseDuration],
+        [], // no handover notes
+      ]);
 
       const service = await buildService(conn);
       const result = await service.findAll({ page: 1, limit: 10 });
@@ -536,40 +515,32 @@ describe('LeavesService', () => {
 
     it('skips duration and handover queries when page is empty', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ total: 0 }]])
-        .mockResolvedValueOnce([[]]); // empty page
+      queueMocks(conn, [
+        [{ total: 0 }],
+        [], // empty page
+      ]);
 
       const service = await buildService(conn);
       const result = await service.findAll({ page: 1, limit: 10 });
 
       expect(result.data).toHaveLength(0);
-      expect(conn.query).toHaveBeenCalledTimes(2); // count + main SELECT only
+      expect(conn.query).toHaveBeenCalledTimes(2);
     });
 
     it('filters by status', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ total: 0 }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[]]);
+      queueMocks(conn, [[{ total: 0 }], [], [], []]);
 
       const service = await buildService(conn);
       await service.findAll({ page: 1, limit: 10, status: 'Approved' });
 
-      const countSql = conn.query.mock.calls[0][0] as string;
-      expect(countSql).toContain('WHERE');
+      expect((conn.query.mock.calls[0][0] as string)).toContain('WHERE');
       expect(conn.query.mock.calls[0][1]).toContain('Approved');
     });
 
     it('filters by staffId', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ total: 0 }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[]]);
+      queueMocks(conn, [[{ total: 0 }], [], [], []]);
 
       const service = await buildService(conn);
       await service.findAll({ page: 1, limit: 10, staffId: 10 });
@@ -593,10 +564,11 @@ describe('LeavesService', () => {
   describe('findOne', () => {
     it('returns leave with durations and handover notes', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]]);
+      queueMocks(conn, [
+        [baseLeave],
+        [baseDuration],
+        [baseHandoverNote],
+      ]);
 
       const service = await buildService(conn);
       const result = await service.findOne(1);
@@ -607,12 +579,9 @@ describe('LeavesService', () => {
       expect(result.handoverNotes![0].note).toBe('Please cover the Monday standup');
     });
 
-    it('returns empty handoverNotes array when none exist', async () => {
+    it('returns empty handoverNotes when none exist', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[]]); // no handover notes
+      queueMocks(conn, [[baseLeave], [baseDuration], []]);
 
       const service = await buildService(conn);
       const result = await service.findOne(1);
@@ -642,21 +611,21 @@ describe('LeavesService', () => {
   describe('review', () => {
     it('transitions Pending → Reviewed and notifies staff and supervisor', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([{ affectedRows: 1 }])       // UPDATE
-        .mockResolvedValueOnce([[baseLeave]])                // findOne — leave
-        .mockResolvedValueOnce([[baseDuration]])             // findOne — durations
-        .mockResolvedValueOnce([[baseHandoverNote]])         // findOne — handover_notes
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]])
-        .mockResolvedValueOnce([[{ email: 'hr@mc.org' }]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [baseLeave],
+        { affectedRows: 1 },                                                // UPDATE
+        [baseLeave],                                                         // findOne — leave
+        [baseDuration],                                                      // findOne — durations
+        [baseHandoverNote],                                                  // findOne — handover_notes
+        [{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }],
+        [{ email: 'hr@mc.org' }],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       const result = await service.review(1, 'hr@mc.org');
 
       expect(result.id).toBe(1);
-      // Staff + supervisor notified
       expect(mockMailService.sendCaseNotification).toHaveBeenCalledTimes(2);
       const subjects = mockMailService.sendCaseNotification.mock.calls.map(
         (c) => c[0].subjectFull,
@@ -686,33 +655,26 @@ describe('LeavesService', () => {
   describe('approve', () => {
     const reviewedLeave = { ...baseLeave, status: 'Reviewed' as const };
 
-    const setupApproveConn = () => {
-      const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[reviewedLeave]])                       // fetch leave
-        .mockResolvedValueOnce([[baseDuration]])                        // load durations
-        .mockResolvedValueOnce([[{ id: 5, remaining_hours: 100 }]])    // FOR UPDATE balance
-        // validateBalanceForType
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        // mutations
-        .mockResolvedValueOnce([{ affectedRows: 1 }])                  // UPDATE leaves
-        .mockResolvedValueOnce([{ affectedRows: 1 }])                  // UPDATE leave_balances
-        .mockResolvedValueOnce([{ insertId: 1 }])                      // INSERT transaction
-        // findOne after commit
-        .mockResolvedValueOnce([[reviewedLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        // notifications
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[{ email: 'hr@mc.org' }]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
-      return conn;
-    };
-
     it('approves a Reviewed leave and deducts balance', async () => {
-      const conn = setupApproveConn();
+      const conn = makeConn();
+      queueMocks(conn, [
+        [reviewedLeave],
+        [baseDuration],
+        [{ id: 5, remaining_hours: 100 }],           // FOR UPDATE balance
+        [{ country: 'Nigeria' }],                     // validateBalance — country
+        [{ annual_hours: 160, monthly_accrual_hours: null }], // validateBalance — config
+        [{ used_hours: 0 }],                          // validateBalance — used
+        { affectedRows: 1 },                          // UPDATE leaves
+        { affectedRows: 1 },                          // UPDATE leave_balances
+        { insertId: 1 },                              // INSERT transaction
+        [reviewedLeave],                              // findOne — leave
+        [baseDuration],                               // findOne — durations
+        [baseHandoverNote],                           // findOne — handover_notes
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [{ email: 'hr@mc.org' }],
+        [{ full_name: 'John Doe' }],
+      ]);
+
       const service = await buildService(conn);
       const result = await service.approve(1, 'sup@mc.org');
 
@@ -732,30 +694,29 @@ describe('LeavesService', () => {
       ];
 
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[reviewedLeave]])
-        .mockResolvedValueOnce([multiDurations])
-        .mockResolvedValueOnce([[{ id: 5, remaining_hours: 80 }]])  // FOR UPDATE lt-uid-001
-        .mockResolvedValueOnce([[{ id: 6, remaining_hours: 40 }]])  // FOR UPDATE lt-uid-002
-        // validateBalance lt-uid-001
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 160, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        // validateBalance lt-uid-002
-        .mockResolvedValueOnce([[{ country: 'Nigeria' }]])
-        .mockResolvedValueOnce([[{ annual_hours: 80, monthly_accrual_hours: null }]])
-        .mockResolvedValueOnce([[{ used_hours: 0 }]])
-        .mockResolvedValueOnce([{ affectedRows: 1 }])  // UPDATE leaves
-        .mockResolvedValueOnce([{ affectedRows: 1 }])  // UPDATE balance lt-uid-001
-        .mockResolvedValueOnce([{ insertId: 1 }])      // INSERT txn lt-uid-001
-        .mockResolvedValueOnce([{ affectedRows: 1 }])  // UPDATE balance lt-uid-002
-        .mockResolvedValueOnce([{ insertId: 2 }])      // INSERT txn lt-uid-002
-        .mockResolvedValueOnce([[reviewedLeave]])
-        .mockResolvedValueOnce([multiDurations])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [reviewedLeave],
+        multiDurations,
+        [{ id: 5, remaining_hours: 80 }],            // FOR UPDATE lt-uid-001
+        [{ id: 6, remaining_hours: 40 }],            // FOR UPDATE lt-uid-002
+        [{ country: 'Nigeria' }],                    // validateBalance lt-uid-001
+        [{ annual_hours: 160, monthly_accrual_hours: null }],
+        [{ used_hours: 0 }],
+        [{ country: 'Nigeria' }],                    // validateBalance lt-uid-002
+        [{ annual_hours: 80, monthly_accrual_hours: null }],
+        [{ used_hours: 0 }],
+        { affectedRows: 1 },                         // UPDATE leaves
+        { affectedRows: 1 },                         // UPDATE balance lt-uid-001
+        { insertId: 1 },                             // INSERT txn lt-uid-001
+        { affectedRows: 1 },                         // UPDATE balance lt-uid-002
+        { insertId: 2 },                             // INSERT txn lt-uid-002
+        [reviewedLeave],
+        multiDurations,
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       await service.approve(1, 'sup@mc.org');
@@ -768,7 +729,7 @@ describe('LeavesService', () => {
 
     it('throws BadRequestException when leave is not Reviewed', async () => {
       const conn = makeConn();
-      conn.query.mockResolvedValueOnce([[baseLeave]]); // status Pending
+      conn.query.mockResolvedValueOnce([[baseLeave]]);
 
       const service = await buildService(conn);
       await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(BadRequestException);
@@ -776,10 +737,11 @@ describe('LeavesService', () => {
 
     it('throws BadRequestException when balance record not found', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[reviewedLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[]]); // no balance row
+      queueMocks(conn, [
+        [reviewedLeave],
+        [baseDuration],
+        [], // no balance row
+      ]);
 
       const service = await buildService(conn);
       await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(BadRequestException);
@@ -788,10 +750,11 @@ describe('LeavesService', () => {
 
     it('throws BadRequestException when remaining hours insufficient', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[reviewedLeave]])
-        .mockResolvedValueOnce([[baseDuration]])                     // 8 hrs required
-        .mockResolvedValueOnce([[{ id: 5, remaining_hours: 4 }]]);  // only 4 available
+      queueMocks(conn, [
+        [reviewedLeave],
+        [baseDuration],                              // 8 hrs required
+        [{ id: 5, remaining_hours: 4 }],             // only 4 available
+      ]);
 
       const service = await buildService(conn);
       await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(BadRequestException);
@@ -808,10 +771,8 @@ describe('LeavesService', () => {
 
     it('rolls back on unexpected db error', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[reviewedLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockRejectedValueOnce(new Error('DB crash'));
+      queueMocks(conn, [[reviewedLeave], [baseDuration]]);
+      conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
       await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(
@@ -826,15 +787,16 @@ describe('LeavesService', () => {
   describe('reject', () => {
     it('rejects a Pending leave without touching balances', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([{ affectedRows: 1 }])
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [baseLeave],
+        { affectedRows: 1 },      // UPDATE status
+        [baseLeave],               // findOne
+        [baseDuration],
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       await service.reject(1, 'hr@mc.org');
@@ -850,19 +812,20 @@ describe('LeavesService', () => {
       const approvedLeave = { ...baseLeave, status: 'Approved' as const };
 
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[approvedLeave]])
-        .mockResolvedValueOnce([{ affectedRows: 1 }])  // UPDATE status
-        .mockResolvedValueOnce([[baseDuration]])         // load durations for reversal
-        .mockResolvedValueOnce([[{ id: 5 }]])            // FOR UPDATE balance
-        .mockResolvedValueOnce([{ affectedRows: 1 }])   // UPDATE balance (restore)
-        .mockResolvedValueOnce([{ insertId: 1 }])        // INSERT reversal txn
-        .mockResolvedValueOnce([[approvedLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [approvedLeave],
+        { affectedRows: 1 },      // UPDATE status
+        [baseDuration],            // load durations for reversal
+        [{ id: 5 }],              // FOR UPDATE balance
+        { affectedRows: 1 },      // UPDATE balance (restore)
+        { insertId: 1 },          // INSERT reversal txn
+        [approvedLeave],           // findOne
+        [baseDuration],
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       await service.reject(1, 'hr@mc.org');
@@ -896,9 +859,8 @@ describe('LeavesService', () => {
 
     it('rolls back on unexpected db error', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockRejectedValueOnce(new Error('DB crash'));
+      queueMocks(conn, [[baseLeave]]);
+      conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
       await expect(service.reject(1, 'hr@mc.org')).rejects.toThrow(
@@ -913,16 +875,17 @@ describe('LeavesService', () => {
   describe('cancel', () => {
     it('cancels a Pending leave and writes cancellation audit record', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([{ affectedRows: 1 }])  // UPDATE status
-        .mockResolvedValueOnce([{ insertId: 1 }])       // INSERT leave_cancellations
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]])
-        .mockResolvedValueOnce([[{ email: 'hr@mc.org' }]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [baseLeave],
+        { affectedRows: 1 },   // UPDATE status
+        { insertId: 1 },       // INSERT leave_cancellations
+        [baseLeave],            // findOne
+        [baseDuration],
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }],
+        [{ email: 'hr@mc.org' }],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       const result = await service.cancel(1, 'staff@mc.org', 'Personal reasons');
@@ -939,16 +902,17 @@ describe('LeavesService', () => {
 
     it('cancels a Reviewed leave', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[{ ...baseLeave, status: 'Reviewed' }]])
-        .mockResolvedValueOnce([{ affectedRows: 1 }])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [{ ...baseLeave, status: 'Reviewed' }],
+        { affectedRows: 1 },
+        { insertId: 1 },
+        [baseLeave],
+        [baseDuration],
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
       const result = await service.cancel(1, 'staff@mc.org');
@@ -957,19 +921,20 @@ describe('LeavesService', () => {
 
     it('passes null reason to cancellation record when not provided', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([{ affectedRows: 1 }])
-        .mockResolvedValueOnce([{ insertId: 1 }])
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockResolvedValueOnce([[baseDuration]])
-        .mockResolvedValueOnce([[baseHandoverNote]])
-        .mockResolvedValueOnce([[{ staff_email: 'staff@mc.org', supervisor_email: null }]])
-        .mockResolvedValueOnce([[]])
-        .mockResolvedValueOnce([[{ full_name: 'John Doe' }]]);
+      queueMocks(conn, [
+        [baseLeave],
+        { affectedRows: 1 },
+        { insertId: 1 },
+        [baseLeave],
+        [baseDuration],
+        [baseHandoverNote],
+        [{ staff_email: 'staff@mc.org', supervisor_email: null }],
+        [],
+        [{ full_name: 'John Doe' }],
+      ]);
 
       const service = await buildService(conn);
-      await service.cancel(1, 'staff@mc.org'); // no reason
+      await service.cancel(1, 'staff@mc.org');
 
       const cancellationInsert = conn.query.mock.calls.find(
         (c) => (c[0] as string).includes('leave_cancellations'),
@@ -1003,9 +968,8 @@ describe('LeavesService', () => {
 
     it('rolls back on unexpected db error', async () => {
       const conn = makeConn();
-      conn.query
-        .mockResolvedValueOnce([[baseLeave]])
-        .mockRejectedValueOnce(new Error('DB crash'));
+      queueMocks(conn, [[baseLeave]]);
+      conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
       await expect(service.cancel(1, 'staff@mc.org')).rejects.toThrow(
