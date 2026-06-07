@@ -26,7 +26,6 @@ export interface Leave {
   unique_id: string;
   staff_id: number;
   reason: string;
-  handover_note: string;
   total_hours: number;
   status: 'Pending' | 'Reviewed' | 'Approved' | 'Rejected' | 'Cancelled';
   created_by: string;
@@ -40,16 +39,26 @@ export interface Leave {
   cancelled_by?: string;
   date_cancelled?: Date;
   durations?: LeaveDuration[];
+  handoverNotes?: HandoverNote[];
 }
 
 export interface LeaveDuration {
   id: number;
   leave_id: number;
-  leave_type_id: string; // now lives here
-  leave_type_name?: string; // joined
+  leave_type_id: string;
+  leave_type_name?: string;
   start_date: string;
   end_date: string;
   hours: number;
+}
+
+export interface HandoverNote {
+  id: number;
+  unique_id: string;
+  leave_id: number;
+  staff_email: string;
+  note: string;
+  created_at: Date;
 }
 
 export interface PaginatedResult<T> {
@@ -70,6 +79,21 @@ function fmtLeaveTypeBreakdown(
   return [...grouped.values()]
     .map((g) => `  • ${g.name}: ${g.hours} hrs`)
     .join('\n');
+}
+
+function msgHandover(
+  staffName: string,
+  recipientEmail: string,
+  note: string,
+  startDate: string,
+  endDate: string,
+): string {
+  return (
+    `You have been assigned a handover task by ${staffName}.\n\n` +
+    `Leave period: ${startDate} → ${endDate}\n\n` +
+    `Task:\n${note}\n\n` +
+    `Please ensure you are prepared to cover this responsibility during the absence.`
+  );
 }
 
 function msgCreated(
@@ -220,8 +244,7 @@ export class LeavesService {
   }
 
   // ---------------------------------------------------------------------------
-  // PRIVATE — build a leave-type breakdown map from duration rows.
-  // Returns Map<leaveTypeId, { name, hours }> for notifications and logic.
+  // PRIVATE — build leave-type breakdown map from duration rows
   // ---------------------------------------------------------------------------
   private buildBreakdown(
     durations: LeaveDuration[],
@@ -258,8 +281,7 @@ export class LeavesService {
   }
 
   // ---------------------------------------------------------------------------
-  // PRIVATE — validate balance for ONE leave type.
-  // Called in a loop during create (advisory) and approve (locked).
+  // PRIVATE — validate balance for ONE leave type
   // ---------------------------------------------------------------------------
   private async validateBalanceForType(
     conn: mysql.PoolConnection,
@@ -292,8 +314,6 @@ export class LeavesService {
     const config = configRows[0];
     const isAccrual = config.monthly_accrual_hours != null;
 
-    // Hours already consumed by active leaves of this type
-    // NOTE: query now joins leave_durations to filter by leave_type_id there
     const [usedRows] = await conn.query<mysql.RowDataPacket[]>(
       `SELECT COALESCE(SUM(ld.hours), 0) AS used_hours
        FROM   leave_durations ld
@@ -325,7 +345,6 @@ export class LeavesService {
     }
 
     if (availableHours < requiredHours) {
-      // Resolve leave type name for a friendlier error
       const [[ltRow]] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT name FROM leave_types WHERE unique_id = ?`,
         [leaveTypeId],
@@ -339,12 +358,26 @@ export class LeavesService {
   }
 
   // ---------------------------------------------------------------------------
+  // PRIVATE — fetch handover notes for a leave
+  // ---------------------------------------------------------------------------
+  private async fetchHandoverNotes(
+    conn: mysql.PoolConnection,
+    leaveId: number,
+  ): Promise<HandoverNote[]> {
+    const [rows] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT * FROM handover_notes WHERE leave_id = ? ORDER BY created_at ASC`,
+      [leaveId],
+    );
+    return rows as HandoverNote[];
+  }
+
+  // ---------------------------------------------------------------------------
   // POST /leaves
   // ---------------------------------------------------------------------------
   async create(dto: CreateLeaveDto, user: RequestUser): Promise<Leave> {
     const conn = await this.pool.getConnection();
     try {
-      // 1. Internal overlap check (across all ranges regardless of leave type)
+      // 1. Internal overlap check
       const internalOverlap = findInternalOverlap(dto.leaveDuration);
       if (internalOverlap) {
         throw new BadRequestException(
@@ -361,7 +394,7 @@ export class LeavesService {
         }
       }
 
-      // 3. Verify all referenced leave types actually exist
+      // 3. Verify all referenced leave types exist
       const uniqueLeaveTypeIds = [
         ...new Set(dto.leaveDuration.map((d) => d.leaveTypeId)),
       ];
@@ -375,7 +408,7 @@ export class LeavesService {
         }
       }
 
-      // 4. No overlap with existing active leaves for this staff member
+      // 4. No overlap with existing active leaves
       const [existingDurations] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ld.start_date, ld.end_date
          FROM   leave_durations ld
@@ -411,7 +444,6 @@ export class LeavesService {
         );
       }
 
-      // Ensure no range results in 0 working hours
       const totalHours = [...hoursPerType.values()].reduce((a, b) => a + b, 0);
       if (totalHours === 0) {
         throw new BadRequestException(
@@ -438,16 +470,9 @@ export class LeavesService {
       const unique_id = randomBytes(16).toString('hex');
       const [result] = await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leaves
-           (unique_id, staff_id, reason, handover_note, total_hours, status, created_by)
-         VALUES (?, ?, ?, ?, ?, 'Pending', ?)`,
-        [
-          unique_id,
-          dto.staffId,
-          dto.reason,
-          dto.handoverNote,
-          totalHours,
-          user.email,
-        ],
+           (unique_id, staff_id, reason, total_hours, status, created_by)
+         VALUES (?, ?, ?, ?, 'Pending', ?)`,
+        [unique_id, dto.staffId, dto.reason, totalHours, user.email],
       );
       const leaveId = result.insertId;
 
@@ -457,6 +482,15 @@ export class LeavesService {
           `INSERT INTO leave_durations (leave_id, leave_type_id, start_date, end_date, hours)
            VALUES (?, ?, ?, ?, ?)`,
           [leaveId, d.leaveTypeId, d.startDate, d.endDate, hours],
+        );
+      }
+
+      // Insert handover notes
+      for (const hn of dto.handoverNotes) {
+        await conn.query(
+          `INSERT INTO handover_notes (unique_id, leave_id, staff_email, note)
+           VALUES (?, ?, ?, ?)`,
+          [randomBytes(16).toString('hex'), leaveId, hn.staffEmail, hn.note],
         );
       }
 
@@ -474,6 +508,7 @@ export class LeavesService {
           leave.durations ?? [],
         );
 
+        // Leave submission notification
         const message = msgCreated(
           staffName,
           breakdown,
@@ -501,6 +536,23 @@ export class LeavesService {
           });
         if (hrEmails.length)
           await this.mailService.sendToMany(hrEmails, mailOpts);
+
+        // Handover notifications — one per assignee
+        for (const hn of dto.handoverNotes) {
+          await this.mailService.sendCaseNotification({
+            to: hn.staffEmail,
+            subject: 'Mercy Corps Leave Management',
+            subjectFull: 'Handover Task Assigned',
+            siteName: 'Mercy Corps Nigeria',
+            message: msgHandover(
+              staffName,
+              hn.staffEmail,
+              hn.note,
+              startDate,
+              endDate,
+            ),
+          });
+        }
       } catch {
         /* non-fatal */
       }
@@ -572,18 +624,17 @@ export class LeavesService {
         [...params, limit, offset],
       );
 
-      // Attach durations (with leave type names) for each leave in the page
       const leaveIds = (rows as Leave[]).map((r) => r.id);
-
       const durationsMap = new Map<number, LeaveDuration[]>();
+      const handoverMap = new Map<number, HandoverNote[]>();
 
       if (leaveIds.length) {
         const [durationRows] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT ld.*, lt.name AS leave_type_name
-     FROM leave_durations ld
-     LEFT JOIN leave_types lt ON lt.unique_id = ld.leave_type_id
-     WHERE ld.leave_id IN (?)
-     ORDER BY ld.start_date ASC`,
+           FROM leave_durations ld
+           LEFT JOIN leave_types lt ON lt.unique_id = ld.leave_type_id
+           WHERE ld.leave_id IN (?)
+           ORDER BY ld.start_date ASC`,
           [leaveIds],
         );
         for (const dr of durationRows as LeaveDuration[]) {
@@ -591,11 +642,22 @@ export class LeavesService {
           list.push(dr);
           durationsMap.set(dr.leave_id, list);
         }
+
+        const [handoverRows] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT * FROM handover_notes WHERE leave_id IN (?) ORDER BY created_at ASC`,
+          [leaveIds],
+        );
+        for (const hn of handoverRows as HandoverNote[]) {
+          const list = handoverMap.get(hn.leave_id) ?? [];
+          list.push(hn);
+          handoverMap.set(hn.leave_id, list);
+        }
       }
 
       const data = (rows as Leave[]).map((r) => ({
         ...r,
         durations: durationsMap.get(r.id) ?? [],
+        handoverNotes: handoverMap.get(r.id) ?? [],
       }));
 
       return {
@@ -616,9 +678,7 @@ export class LeavesService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT l.*
-         FROM   leaves l
-         WHERE  l.id = ?`,
+        `SELECT l.* FROM leaves l WHERE l.id = ?`,
         [id],
       );
       if (!rows.length)
@@ -635,6 +695,7 @@ export class LeavesService {
         [id],
       );
       leave.durations = durations as LeaveDuration[];
+      leave.handoverNotes = await this.fetchHandoverNotes(conn, id);
 
       return leave;
     } catch (err) {
@@ -724,9 +785,6 @@ export class LeavesService {
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/approve  (Supervisor)
-  //
-  // Locks balance rows for ALL leave types on this leave before validating.
-  // Each type is deducted independently.
   // ---------------------------------------------------------------------------
   async approve(id: number, approvedBy: string): Promise<Leave> {
     const conn = await this.pool.getConnection();
@@ -745,7 +803,6 @@ export class LeavesService {
         );
       }
 
-      // Load durations (with leave type info) before entering transaction
       const [durationRows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ld.*, lt.name AS leave_type_name
          FROM leave_durations ld
@@ -754,15 +811,13 @@ export class LeavesService {
         [id],
       );
       const durations = durationRows as LeaveDuration[];
-      const breakdown = this.buildBreakdown(durations); // Map<leaveTypeId, { name, hours }>
+      const breakdown = this.buildBreakdown(durations);
 
       const leaveYear = new Date(leave.created_at).getFullYear();
       const now = new Date();
 
       await conn.beginTransaction();
 
-      // Lock balance rows for ALL leave types on this leave — in a consistent
-      // order (sorted by leaveTypeId) to prevent deadlocks across concurrent approvals
       const sortedTypeIds = [...breakdown.keys()].sort();
       const balanceMap = new Map<string, { id: number; remaining: number }>();
 
@@ -770,9 +825,7 @@ export class LeavesService {
         const [balanceRows] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT id, remaining_hours
            FROM   leave_balances
-           WHERE  staff_id      = ?
-             AND  leave_type_id = ?
-             AND  year          = ?
+           WHERE  staff_id = ? AND leave_type_id = ? AND year = ?
            FOR UPDATE`,
           [leave.staff_id, leaveTypeId, leaveYear],
         );
@@ -790,7 +843,6 @@ export class LeavesService {
         });
       }
 
-      // Validate each type independently (locked remaining_hours + full policy check)
       for (const [leaveTypeId, { name, hours }] of breakdown) {
         const { remaining } = balanceMap.get(leaveTypeId)!;
         if (remaining < hours) {
@@ -799,7 +851,6 @@ export class LeavesService {
               `Required: ${hours} hrs, Available: ${remaining.toFixed(2)} hrs`,
           );
         }
-
         await this.validateBalanceForType(
           conn,
           leave.staff_id,
@@ -810,13 +861,11 @@ export class LeavesService {
         );
       }
 
-      // Mutations — update leave status
       await conn.query(
         `UPDATE leaves SET status = 'Approved', approved_by = ?, date_approved = NOW() WHERE id = ?`,
         [approvedBy, id],
       );
 
-      // Deduct balance + write transaction for each leave type
       for (const [leaveTypeId, { name, hours }] of breakdown) {
         const { id: balanceId } = balanceMap.get(leaveTypeId)!;
 
@@ -899,7 +948,6 @@ export class LeavesService {
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/reject
-  // If previously Approved, reverses hours for every leave type on the leave.
   // ---------------------------------------------------------------------------
   async reject(id: number, rejectedBy: string): Promise<Leave> {
     const conn = await this.pool.getConnection();
@@ -925,7 +973,6 @@ export class LeavesService {
         [rejectedBy, id],
       );
 
-      // Restore balance per leave type — only if leave was Approved
       if (leave.status === 'Approved') {
         const leaveYear = new Date(leave.created_at).getFullYear();
 
@@ -946,7 +993,7 @@ export class LeavesService {
             [leave.staff_id, leaveTypeId, leaveYear],
           );
 
-          if (!balanceRows.length) continue; // edge case: balance deleted post-approval
+          if (!balanceRows.length) continue;
 
           const balanceId = balanceRows[0].id as number;
 
@@ -1030,7 +1077,7 @@ export class LeavesService {
   }
 
   // ---------------------------------------------------------------------------
-  // PATCH /leaves/:id/cancel  (Staff self-service — Pending/Reviewed only)
+  // PATCH /leaves/:id/cancel  (Staff self-service)
   // ---------------------------------------------------------------------------
   async cancel(
     id: number,
@@ -1062,15 +1109,12 @@ export class LeavesService {
       await conn.beginTransaction();
 
       await conn.query(
-        `UPDATE leaves
-         SET status = 'Cancelled', cancelled_by = ?, date_cancelled = NOW()
-         WHERE id = ?`,
+        `UPDATE leaves SET status = 'Cancelled', cancelled_by = ?, date_cancelled = NOW() WHERE id = ?`,
         [cancelledBy, id],
       );
 
       await conn.query(
-        `INSERT INTO leave_cancellations
-           (unique_id, leave_id, staff_id, reason, cancelled_by)
+        `INSERT INTO leave_cancellations (unique_id, leave_id, staff_id, reason, cancelled_by)
          VALUES (?, ?, ?, ?, ?)`,
         [
           randomBytes(16).toString('hex'),

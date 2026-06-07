@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsEmail,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -19,7 +20,16 @@ export class LeaveDurationDto {
 
   @IsString()
   @IsNotEmpty()
-  leaveTypeId: string = ''; // unique_id of the leave type for this range
+  leaveTypeId: string = '';
+}
+
+export class HandoverNoteDto {
+  @IsEmail()
+  staffEmail: string = '';
+
+  @IsString()
+  @IsNotEmpty()
+  note: string = '';
 }
 
 export class CreateLeaveDto {
@@ -30,9 +40,10 @@ export class CreateLeaveDto {
   @IsOptional()
   reason?: string;
 
-  @IsString()
-  @IsNotEmpty()
-  handoverNote: string = '';
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => HandoverNoteDto)
+  handoverNotes: HandoverNoteDto[] = [];
 
   @IsArray()
   @ValidateNested({ each: true })
