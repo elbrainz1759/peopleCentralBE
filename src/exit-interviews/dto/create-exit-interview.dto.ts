@@ -4,8 +4,6 @@ import {
   IsDateString,
   IsOptional,
   IsIn,
-  Min,
-  Max,
   IsNotEmpty,
 } from 'class-validator';
 
@@ -30,61 +28,166 @@ export class CreateExitInterviewDto {
   @IsNotEmpty()
   reasonForLeaving: string = '';
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  otherReason: string = '';
+  otherReason?: string;
 
-  @IsNotEmpty()
   @IsString()
+  @IsNotEmpty()
   programId: string = '';
 
-  @IsNotEmpty()
   @IsString()
+  @IsNotEmpty()
   countryId: string = '';
 
-  @IsNotEmpty()
   @IsString()
+  @IsNotEmpty()
   locationId: string = '';
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsString()
-  mostEnjoyed: string = '';
-
-  @IsNotEmpty()
-  @IsString()
-  companyImprovement: string = '';
-
-  @IsNotEmpty()
-  @IsString()
-  handoverNotes: string = '';
-
-  @IsNotEmpty()
-  @IsString()
-  newEmployer: string = '';
-
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  ratingCulture: number = 0;
-
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  ratingJob: number = 0;
-
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  ratingManager: number = 0;
-
-  @IsIn(['Yes', 'No', 'Maybe'])
-  wouldRecommend: string = '';
+  mostEnjoyed?: string;
 
   @IsOptional()
-  @IsIn(['Employee', 'Supervisor', 'HR', 'Operations', 'Finance'])
-  stage: string = '';
+  @IsString()
+  companyImprovement?: string;
 
   @IsOptional()
-  @IsIn(['Pending', 'Approved', 'Rejected'])
-  status: string = '';
+  @IsString()
+  handoverNotes?: string;
+
+  @IsOptional()
+  @IsString()
+  newEmployer?: string;
+
+  @IsOptional()
+  @IsString()
+  whyLeaving?: string;
+
+  @IsOptional()
+  @IsString()
+  whatWouldPrevent?: string;
+
+  @IsOptional()
+  @IsString()
+  suggestions?: string;
+
+  @IsOptional()
+  @IsIn(['Yes', 'No', 'Maybe', ''])
+  workAsExpected?: string;
+
+  @IsOptional()
+  @IsString()
+  workExpectedComments?: string;
+
+  @IsOptional()
+  @IsIn(['Too much', 'About right', 'Too little', ''])
+  workload?: string;
+
+  // Supervisor ratings
+  @IsOptional()
+  @IsString()
+  supervisorFair?: string;
+
+  @IsOptional()
+  @IsString()
+  supervisorCommunication?: string;
+
+  @IsOptional()
+  @IsString()
+  supervisorFeedback?: string;
+
+  @IsOptional()
+  @IsString()
+  supervisorRecognition?: string;
+
+  @IsOptional()
+  @IsString()
+  supervisorSensitive?: string;
+
+  @IsOptional()
+  @IsString()
+  supervisorPolicies?: string;
+
+  @IsOptional()
+  @IsString()
+  supervisorComplaints?: string;
+
+  // Job ratings
+  @IsOptional()
+  @IsString()
+  ratingPay?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingTraining?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingCareerDev?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingEquipment?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingWorkConditions?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingOrientation?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingPerfReview?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingCoopDept?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingCoopOther?: string;
+
+  @IsOptional()
+  @IsString()
+  ratingComments?: string;
+
+  // Benefits
+  @IsOptional()
+  @IsString()
+  benefitMedical?: string;
+
+  @IsOptional()
+  @IsString()
+  benefitAnnualLeave?: string;
+
+  @IsOptional()
+  @IsString()
+  benefitSickLeave?: string;
+
+  @IsOptional()
+  @IsString()
+  benefitGratuity?: string;
+
+  @IsOptional()
+  @IsString()
+  benefitHolidays?: string;
+
+  @IsOptional()
+  @IsString()
+  benefitEducation?: string;
+
+  @IsOptional()
+  @IsIn(['Yes', 'No', 'Maybe', ''])
+  wouldRecommend?: string;
+
+  @IsOptional()
+  @IsIn(['Employee', 'Supervisor', 'HR', 'Operations', 'Finance', ''])
+  stage?: string;
+
+  @IsOptional()
+  @IsIn(['Pending', 'Approved', 'Rejected', ''])
+  status?: string;
 }
