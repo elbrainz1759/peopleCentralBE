@@ -14,10 +14,6 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   designation: string = '';
 
-  @IsString()
-  @IsNotEmpty()
-  status: string = '';
-
   @IsInt()
   @IsNotEmpty()
   @Type(() => Number)
