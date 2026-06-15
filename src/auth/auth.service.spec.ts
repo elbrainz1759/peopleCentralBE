@@ -29,7 +29,7 @@ describe('AuthService', () => {
 
   const mockUser = {
     id: 1,
-    email: 'user@test.com',
+    email: 'user@mercycorps.org',
     role: 'User',
     unique_id: 'user-uid-1',
     first_name: 'John',
@@ -71,7 +71,7 @@ describe('AuthService', () => {
       mockPool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
       const result = await service.register(
-        'user@test.com',
+        'user@mercycorps.org',
         'password',
         'User',
       );
@@ -85,7 +85,7 @@ describe('AuthService', () => {
       mockPool.query.mockResolvedValueOnce([[]]);
 
       await expect(
-        service.register('user@test.com', 'password', 'User'),
+        service.register('user@mercycorps.org', 'password', 'User'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -94,7 +94,7 @@ describe('AuthService', () => {
       mockPool.query.mockResolvedValueOnce([[{ id: 2 }]]);
 
       await expect(
-        service.register('user@test.com', 'password', 'User'),
+        service.register('user@mercycorps.org', 'password', 'User'),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -110,7 +110,7 @@ describe('AuthService', () => {
       mockPool.query.mockResolvedValueOnce([[]]);
 
       await expect(
-        service.approveUser('user@test.com', 'User', 'boss@test.com'),
+        service.approveUser('user@mercycorps.org', 'User', 'boss@mercycorps.org'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -119,7 +119,7 @@ describe('AuthService', () => {
       mockPool.query.mockResolvedValueOnce([[]]);
 
       await expect(
-        service.approveUser('user@test.com', 'User', 'boss@test.com'),
+        service.approveUser('user@mercycorps.org', 'User', 'boss@mercycorps.org'),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -134,9 +134,9 @@ describe('AuthService', () => {
       mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
       const result = await service.approveUser(
-        'user@test.com',
+        'user@mercycorps.org',
         'User',
-        'boss@test.com',
+        'boss@mercycorps.org',
       );
 
       expect(result.message).toBe('User approved successfully');
@@ -153,7 +153,7 @@ describe('AuthService', () => {
       mockPool.query.mockResolvedValueOnce([[]]);
 
       await expect(
-        service.login('user@test.com', 'password', {
+        service.login('user@mercycorps.org', 'password', {
           userAgent: 'jest',
           ip: '127.0.0.1',
         }),
@@ -165,7 +165,7 @@ describe('AuthService', () => {
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
       await expect(
-        service.login('user@test.com', 'wrong', {
+        service.login('user@mercycorps.org', 'wrong', {
           userAgent: 'jest',
           ip: '127.0.0.1',
         }),
@@ -183,7 +183,7 @@ describe('AuthService', () => {
       mockPool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
       mockPool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
-      const result = await service.login('user@test.com', 'password', {
+      const result = await service.login('user@mercycorps.org', 'password', {
         userAgent: 'jest',
         ip: '127.0.0.1',
       });
@@ -296,7 +296,7 @@ describe('AuthService', () => {
     it('generates reset token', async () => {
       mockPool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
-      const result = await service.requestReset('user@test.com');
+      const result = await service.requestReset('user@mercycorps.org');
 
       expect(result.message).toBe('Reset token generated');
       expect(result.token).toBeDefined();
