@@ -111,6 +111,10 @@ export class AuthService {
     role: string = 'User',
     supervisorEmail: string,
   ) {
+    //check email must be @mercycorps.org
+    if (!email.endsWith('@mercycorps.org')) {
+      throw new BadRequestException('Email must be a mercycorps.org address');
+    }
     // Validate inputs
     if (!email || !role || !supervisorEmail) {
       throw new BadRequestException(

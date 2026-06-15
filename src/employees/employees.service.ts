@@ -49,6 +49,11 @@ export class EmployeeService {
       designation,
     } = createEmployeeDto;
 
+    //email must be @mercycorps.org
+    if (!email.endsWith('@mercycorps.org')) {
+      throw new BadRequestException('Email must be a mercycorps.org address');
+    }
+
     const unique_id: string = randomBytes(16).toString('hex');
 
     const created_by: string = 'System - Self';
