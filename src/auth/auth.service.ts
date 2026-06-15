@@ -188,7 +188,7 @@ export class AuthService {
         to: email,
         subject: 'Welcome to PeopleCentral — Your Account is Ready',
         subjectFull: 'Your Account Has Been Created',
-        message: `Your PeopleCentral account has been created successfully. Your temporary password is: ${password}. Please log in and change your password immediately`,
+        message: `Your PeopleCentral account has been created successfully. Your temporary password is: ${password} Please log in and change your password immediately`,
         siteName: 'PeopleCentral',
       });
 
