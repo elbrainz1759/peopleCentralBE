@@ -93,10 +93,14 @@ export class UsersService {
     const role: string | undefined = dto.role;
     const password: string | undefined = dto.password;
 
-    if (role !== undefined && !['User', 'Admin', 'Superadmin'].includes(role)) {
-      throw new BadRequestException('Invalid role');
+    //check if role exists and is valid
+    const [validRoles] = await this.pool.query<[]>(
+      'SELECT name FROM roles WHERE name = ?',
+      [role],
+    );
+    if (role !== undefined && validRoles.length === 0) {
+      throw new BadRequestException('Invalid role specified');
     }
-
     const fields: string[] = [];
     const values: (string | number)[] = [];
 
@@ -136,7 +140,11 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    await this.pool.query('DELETE FROM users WHERE unique_id = ?', [unique_id]);
+    //soft delete: set status to 'Deleted' and remove role and password
+    await this.pool.query<mysql.ResultSetHeader>(
+      'UPDATE users SET role = NULL, password = NULL, status = "Deleted" WHERE unique_id = ?',
+      [unique_id],
+    );
 
     return { message: 'User deleted successfully' };
   }
