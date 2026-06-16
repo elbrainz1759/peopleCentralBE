@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseIntPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -43,23 +42,20 @@ export class LocationsController {
 
   // GET /locations/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.locationsService.findOne(id);
   }
 
   // PATCH /locations/:id
   @Patch(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateLocationDto,
-  ) {
+  update(@Param('id') id: string, @Body() dto: UpdateLocationDto) {
     return this.locationsService.update(id, dto);
   }
 
   // DELETE /locations/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.locationsService.remove(id);
   }
 }

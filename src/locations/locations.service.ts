@@ -43,13 +43,26 @@ export class LocationsService {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM locations WHERE name = ?',
+        'SELECT id, status FROM locations WHERE name = ?',
         [dto.name],
       );
       if (existing.length > 0) {
-        throw new ConflictException(
-          `Location with name "${dto.name}" already exists`,
-        );
+        //if status is Deleted, change status to Active and update the location
+        if (existing[0].status === 'Deleted') {
+          await conn.execute(
+            'UPDATE locations SET country = ?, status = "Active" WHERE name = ?',
+            [dto.countryId, dto.name],
+          );
+          const [updated] = await conn.query<mysql.RowDataPacket[]>(
+            'SELECT * FROM locations WHERE name = ?',
+            [dto.name],
+          );
+          return updated[0] as Location;
+        } else {
+          throw new ConflictException(
+            `Location with name "${dto.name}" already exists`,
+          );
+        }
       }
 
       // check country exists
@@ -66,13 +79,13 @@ export class LocationsService {
       const unique_id: string = randomBytes(16).toString('hex');
       const created_by: string = 'System';
 
-      const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO locations (unique_id, name, country, created_by)
-         VALUES (?, ?, ?, ?)`,
-        [unique_id, dto.name, dto.countryId, created_by],
+      await conn.query<mysql.ResultSetHeader>(
+        `INSERT INTO locations (unique_id, name, country, created_by, status)
+         VALUES (?, ?, ?, ?, ?)`,
+        [unique_id, dto.name, dto.countryId, created_by, 'Active'],
       );
 
-      return this.findOne(result.insertId);
+      return this.findOne(unique_id);
     } catch (err) {
       if (err instanceof ConflictException) throw err;
       throw new InternalServerErrorException(err);
@@ -131,15 +144,17 @@ export class LocationsService {
   }
 
   // GET /locations/:id
-  async findOne(id: number): Promise<Location> {
+  async findOne(id: string): Promise<Location> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT a.*, b.name AS country FROM locations a LEFT JOIN countries b ON a.country = b.unique_id WHERE a.id = ?',
+        'SELECT a.*, b.name AS country FROM locations a LEFT JOIN countries b ON a.country = b.unique_id WHERE a.unique_id = ?',
         [id],
       );
       if (!rows.length)
-        throw new NotFoundException(`Location with id ${id} not found`);
+        throw new NotFoundException(
+          `Location with unique_id "${id}" not found`,
+        );
       return rows[0] as Location;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
@@ -172,15 +187,17 @@ export class LocationsService {
   }
 
   // PATCH /locations/:id
-  async update(id: number, dto: UpdateLocationDto): Promise<Location> {
+  async update(id: string, dto: UpdateLocationDto): Promise<Location> {
     const conn = await this.pool.getConnection();
     try {
       const [findLocation] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM locations WHERE id = ?',
+        'SELECT unique_id FROM locations WHERE unique_id = ?',
         [id],
       );
       if (!findLocation.length) {
-        throw new NotFoundException(`Location with id ${id} not found`);
+        throw new NotFoundException(
+          `Location with unique_id "${id}" not found`,
+        );
       }
 
       const fields = (Object.keys(dto) as (keyof UpdateLocationDto)[]).filter(
@@ -191,10 +208,10 @@ export class LocationsService {
       const setClauses = fields.map((f) => `${f} = ?`).join(', ');
       const values = fields.map((f) => dto[f]);
 
-      await conn.execute(`UPDATE locations SET ${setClauses} WHERE id = ?`, [
-        ...values,
-        id,
-      ]);
+      await conn.execute(
+        `UPDATE locations SET ${setClauses} WHERE unique_id = ?`,
+        [...values, id],
+      );
 
       return this.findOne(id);
     } catch (err) {
@@ -206,18 +223,23 @@ export class LocationsService {
   }
 
   // DELETE /locations/:id
-  async remove(id: number): Promise<{ message: string }> {
+  async remove(id: string): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
       const [findLocation] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM locations WHERE id = ?',
+        'SELECT unique_id FROM locations WHERE unique_id = ?',
         [id],
       );
       if (!findLocation.length) {
-        throw new NotFoundException(`Location with id ${id} not found`);
+        throw new NotFoundException(
+          `Location with unique_id "${id}" not found`,
+        );
       }
 
-      await conn.execute('DELETE FROM locations WHERE id = ?', [id]);
+      await conn.execute(
+        "UPDATE locations SET status='Deleted' WHERE unique_id = ?",
+        [id],
+      );
 
       return { message: `Location ${id} deleted successfully` };
     } catch (err) {
