@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseIntPipe,
   HttpCode,
   HttpStatus,
   Req,
@@ -47,13 +46,13 @@ export class CountriesController {
 
   // GET /countries/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.countriesService.findOne(id);
   }
 
   // PATCH /countries/:id
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCountryDto) {
+  update(@Param('id') id: string, @Body() dto: UpdateCountryDto) {
     return this.countriesService.update(id, dto);
   }
 
