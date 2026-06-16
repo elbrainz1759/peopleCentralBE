@@ -72,18 +72,34 @@ export class LeaveTypeConfigsService {
         [dto.leaveTypeId, dto.country],
       );
       if (existing.length) {
-        throw new ConflictException(
-          `A config already exists for leave type "${dto.leaveTypeId}" in country "${dto.country}"`,
-        );
+        //if status is Deleted, change status to Active and update the config
+        if (existing[0].status === 'Deleted') {
+          await conn.query<mysql.ResultSetHeader>(
+            `UPDATE leave_type_country_config
+             SET status = 'Active', annual_hours = ?, monthly_accrual_hours = ?
+             WHERE leave_type_id = ? AND country = ?`,
+            [
+              dto.annualHours,
+              dto.monthlyAccrualHours ?? null,
+              dto.leaveTypeId,
+              dto.country,
+            ],
+          );
+          return this.findOne(existing[0].unique_id as string);
+        } else {
+          throw new ConflictException(
+            `A config already exists for leave type "${dto.leaveTypeId}" in country "${dto.country}"`,
+          );
+        }
       }
 
       const unique_id = randomBytes(16).toString('hex');
       const createdBy = user.email || 'System';
 
-      const [result] = await conn.query<mysql.ResultSetHeader>(
+      await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leave_type_country_config
-           (unique_id, leave_type_id, country, annual_hours, monthly_accrual_hours, created_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+           (unique_id, leave_type_id, country, annual_hours, monthly_accrual_hours, created_by, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           unique_id,
           dto.leaveTypeId,
@@ -91,10 +107,11 @@ export class LeaveTypeConfigsService {
           dto.annualHours,
           dto.monthlyAccrualHours ?? null,
           createdBy,
+          'Active',
         ],
       );
 
-      return this.findOne(result.insertId);
+      return this.findOne(unique_id);
     } catch (err) {
       if (
         err instanceof BadRequestException ||
@@ -178,14 +195,14 @@ export class LeaveTypeConfigsService {
   // GET /leave-type-configs/:id  (internal — used by create/update to return result)
   // FIX: same join bug corrected here too.
   // ---------------------------------------------------------------------------
-  async findOne(id: number): Promise<LeaveTypeConfig> {
+  async findOne(id: string): Promise<LeaveTypeConfig> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ltcc.*, lt.name AS leave_type_name
          FROM leave_type_country_config ltcc
          LEFT JOIN leave_types lt ON lt.unique_id = ltcc.leave_type_id
-         WHERE ltcc.id = ?`,
+         WHERE ltcc.unique_id = ?`,
         [id],
       );
       if (!rows.length) {
@@ -209,13 +226,13 @@ export class LeaveTypeConfigsService {
   // FIX: updated_at = NOW() now always written — previously relied on a trigger.
   // ---------------------------------------------------------------------------
   async update(
-    id: number,
+    id: string,
     dto: UpdateLeaveTypeConfigDto,
   ): Promise<LeaveTypeConfig> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM leave_type_country_config WHERE id = ?',
+        'SELECT * FROM leave_type_country_config WHERE unique_id = ?',
         [id],
       );
       if (!rows.length) {
@@ -233,8 +250,8 @@ export class LeaveTypeConfigsService {
       // If either FK is changing, verify the new combination isn't already taken
       if (dto.country !== undefined || dto.leaveTypeId !== undefined) {
         const [conflict] = await conn.query<mysql.RowDataPacket[]>(
-          `SELECT id FROM leave_type_country_config
-           WHERE leave_type_id = ? AND country = ? AND id != ?`,
+          `SELECT unique_id FROM leave_type_country_config
+           WHERE leave_type_id = ? AND country = ? AND unique_id != ?`,
           [newLeaveTypeId, newCountry, id],
         );
         if (conflict.length) {
@@ -267,12 +284,20 @@ export class LeaveTypeConfigsService {
       if (!fields.length) {
         throw new BadRequestException('No fields provided to update');
       }
+      //map to database column names
+      const columnMap: { [key: string]: string } = {
+        leaveTypeId: 'leave_type_id',
+        country: 'country',
+        annualHours: 'annual_hours',
+        monthlyAccrualHours: 'monthly_accrual_hours',
+      };
+      const mappedFields = fields.map((field) => columnMap[field] || field);
 
       // Always bump updated_at explicitly — do not rely on a DB trigger
-      fields.push('updated_at = NOW()');
+      mappedFields.push('updated_at = NOW()');
 
       await conn.query(
-        `UPDATE leave_type_country_config SET ${fields.join(', ')} WHERE id = ?`,
+        `UPDATE leave_type_country_config SET ${mappedFields.join(', ')} WHERE unique_id = ?`,
         [...values, id],
       );
 
@@ -307,7 +332,7 @@ export class LeaveTypeConfigsService {
       }
 
       await conn.query(
-        'DELETE FROM leave_type_country_config WHERE unique_id = ?',
+        'UPDATE leave_type_country_config SET status = "Deleted" WHERE unique_id = ?',
         [uniqueId],
       );
 

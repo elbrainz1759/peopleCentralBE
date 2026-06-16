@@ -6,7 +6,6 @@ import {
   Delete,
   Param,
   Body,
-  ParseIntPipe,
   HttpCode,
   HttpStatus,
   Req,
@@ -51,16 +50,13 @@ export class LeaveTypeConfigsController {
 
   // GET /leave-type-configs/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.leaveTypeConfigsService.findOne(id);
   }
 
   // PATCH /leave-type-configs/:id
   @Patch(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateLeaveTypeConfigDto,
-  ) {
+  update(@Param('id') id: string, @Body() dto: UpdateLeaveTypeConfigDto) {
     return this.leaveTypeConfigsService.update(id, dto);
   }
 

@@ -42,8 +42,10 @@ describe('LeaveTypeConfigsService', () => {
     expect(service).toBeDefined();
   });
 
+  // ─── create ──────────────────────────────────────────────────────────────────
+
   describe('create', () => {
-    const dto = {
+    const dto: any = {
       leaveTypeId: 'lt-uid-1',
       country: 'country-uid-1',
       annualHours: 160,
@@ -51,180 +53,269 @@ describe('LeaveTypeConfigsService', () => {
     };
 
     it('throws BadRequestException when leave type not found', async () => {
-      mockConn.query.mockResolvedValueOnce([[]]);
+      mockConn.query.mockResolvedValueOnce([[]]); // lt lookup → empty
 
-      await expect(service.create(dto as any, mockUser)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.create(dto, mockUser)).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException when country not found', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
-      mockConn.query.mockResolvedValueOnce([[]]);
+      mockConn.query
+        .mockResolvedValueOnce([[{ id: 1 }]]) // lt found
+        .mockResolvedValueOnce([[]]); // country not found
 
-      await expect(service.create(dto as any, mockUser)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.create(dto, mockUser)).rejects.toThrow(BadRequestException);
     });
 
-    it('throws ConflictException when config already exists', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
-      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'c1' }]]);
-      mockConn.query.mockResolvedValueOnce([[{ id: 5 }]]);
+    it('throws ConflictException when active config already exists', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[{ id: 1 }]])                        // lt found
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]])   // country found
+        .mockResolvedValueOnce([[{ id: 5, status: 'Active' }]]);     // existing config → Active
 
-      await expect(service.create(dto as any, mockUser)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(service.create(dto, mockUser)).rejects.toThrow(ConflictException);
     });
 
-    it('creates config and returns it', async () => {
+    it('restores a soft-deleted config and returns it', async () => {
       mockPool.getConnection
         .mockResolvedValueOnce(mockConn)
         .mockResolvedValueOnce(mockFindOneConn);
 
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
-      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'c1' }]]);
-      mockConn.query.mockResolvedValueOnce([[]]);
-      mockConn.query.mockResolvedValueOnce([{ insertId: 10 }]);
+      mockConn.query
+        .mockResolvedValueOnce([[{ id: 1 }]])                          // lt found
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]])     // country found
+        .mockResolvedValueOnce([[{ id: 5, unique_id: 'cfg-uid-1', status: 'Deleted' }]]) // existing → Deleted
+        .mockResolvedValueOnce([{ affectedRows: 1 }]);                 // UPDATE
 
       mockFindOneConn.query.mockResolvedValueOnce([
-        [
-          {
-            id: 10,
-            unique_id: 'uid1',
-            leave_type_id: 'lt-uid-1',
-            country: 'country-uid-1',
-            annual_hours: 160,
-            monthly_accrual_hours: 13.33,
-          },
-        ],
+        [{ id: 5, unique_id: 'cfg-uid-1', leave_type_id: 'lt-uid-1', country: 'country-uid-1', annual_hours: 160, status: 'Active' }],
       ]);
 
-      const result = await service.create(dto as any, mockUser);
+      const result = await service.create(dto, mockUser);
 
-      expect(result.id).toBe(10);
+      expect(result.unique_id).toBe('cfg-uid-1');
       expect(result.annual_hours).toBe(160);
     });
+
+    it('creates new config and returns it', async () => {
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)
+        .mockResolvedValueOnce(mockFindOneConn);
+
+      mockConn.query
+        .mockResolvedValueOnce([[{ id: 1 }]])                        // lt found
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]])   // country found
+        .mockResolvedValueOnce([[]])                                  // no existing config
+        .mockResolvedValueOnce([{ insertId: 10 }]);                  // INSERT
+
+      mockFindOneConn.query.mockResolvedValueOnce([
+        [{ id: 10, unique_id: 'cfg-uid-new', leave_type_id: 'lt-uid-1', country: 'country-uid-1', annual_hours: 160, monthly_accrual_hours: 13.33 }],
+      ]);
+
+      const result = await service.create(dto, mockUser);
+
+      expect(result.annual_hours).toBe(160);
+      expect(result.monthly_accrual_hours).toBe(13.33);
+      expect(mockConn.query).toHaveBeenNthCalledWith(
+        4,
+        expect.stringContaining('INSERT INTO leave_type_country_config'),
+        expect.arrayContaining([dto.leaveTypeId, dto.country, dto.annualHours, 13.33, mockUser.email, 'Active']),
+      );
+    });
+
+    it('inserts null for monthlyAccrualHours when not provided', async () => {
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)
+        .mockResolvedValueOnce(mockFindOneConn);
+
+      mockConn.query
+        .mockResolvedValueOnce([[{ id: 1 }]])
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]])
+        .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([{ insertId: 1 }]);
+
+      mockFindOneConn.query.mockResolvedValueOnce([
+        [{ id: 1, unique_id: 'cfg-uid-1', annual_hours: 160, monthly_accrual_hours: null }],
+      ]);
+
+      await service.create({ ...dto, monthlyAccrualHours: undefined }, mockUser);
+
+      const insertArgs = mockConn.query.mock.calls[3][1];
+      expect(insertArgs).toContain(null);
+    });
   });
+
+  // ─── findAll ─────────────────────────────────────────────────────────────────
 
   describe('findAll', () => {
     it('returns all configs', async () => {
-      const configs = [{ id: 1, country: 'NG', annual_hours: 160 }];
+      const configs = [{ id: 1, country: 'country-uid-1', annual_hours: 160 }];
 
       mockConn.query.mockResolvedValueOnce([configs]);
 
-      expect(await service.findAll()).toEqual(configs);
+      const result = await service.findAll();
+
+      expect(result).toEqual(configs);
+      expect(mockConn.query).toHaveBeenCalledWith(
+        expect.stringContaining('FROM leave_type_country_config'),
+      );
     });
   });
+
+  // ─── findByLeaveType ─────────────────────────────────────────────────────────
 
   describe('findByLeaveType', () => {
     it('returns configs for a leave type', async () => {
-      const configs = [{ id: 1, leave_type_id: 'lt1' }];
+      const configs = [{ id: 1, leave_type_id: 'lt-uid-1' }];
 
       mockConn.query.mockResolvedValueOnce([configs]);
 
-      expect(await service.findByLeaveType('lt1')).toEqual(configs);
+      const result = await service.findByLeaveType('lt-uid-1');
+
+      expect(result).toEqual(configs);
+      expect(mockConn.query).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE ltcc.leave_type_id = ?'),
+        ['lt-uid-1'],
+      );
     });
   });
+
+  // ─── findByCountry ───────────────────────────────────────────────────────────
 
   describe('findByCountry', () => {
     it('returns configs for a country', async () => {
-      const configs = [{ id: 1, country: 'NG' }];
+      const configs = [{ id: 1, country: 'country-uid-1' }];
 
       mockConn.query.mockResolvedValueOnce([configs]);
 
-      expect(await service.findByCountry('NG')).toEqual(configs);
+      const result = await service.findByCountry('country-uid-1');
+
+      expect(result).toEqual(configs);
+      expect(mockConn.query).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE ltcc.country = ?'),
+        ['country-uid-1'],
+      );
     });
   });
 
+  // ─── findOne ─────────────────────────────────────────────────────────────────
+
   describe('findOne', () => {
     it('returns config when found', async () => {
-      const config = { id: 1, country: 'NG', annual_hours: 160 };
+      const config = { id: 1, unique_id: 'cfg-uid-1', country: 'country-uid-1', annual_hours: 160 };
 
       mockConn.query.mockResolvedValueOnce([[config]]);
 
-      expect(await service.findOne(1)).toEqual(config);
+      const result = await service.findOne('cfg-uid-1');
+
+      expect(result).toEqual(config);
+      expect(mockConn.query).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE ltcc.unique_id = ?'),
+        ['cfg-uid-1'],
+      );
     });
 
     it('throws NotFoundException when not found', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
-      await expect(service.findOne(1)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('uid-missing')).rejects.toThrow(NotFoundException);
     });
   });
+
+  // ─── update ──────────────────────────────────────────────────────────────────
 
   describe('update', () => {
     it('throws NotFoundException when config not found', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
-      await expect(service.update(1, { annualHours: 200 })).rejects.toThrow(
+      await expect(service.update('uid-missing', { annualHours: 200 } as any)).rejects.toThrow(
         NotFoundException,
       );
     });
 
     it('throws BadRequestException when no fields provided', async () => {
       mockConn.query.mockResolvedValueOnce([
-        [{ id: 1, country: 'NG', leave_type_id: 1 }],
+        [{ unique_id: 'cfg-uid-1', country: 'country-uid-1', leave_type_id: 'lt-uid-1' }],
       ]);
+      // no FK changes so no conflict query fires — straight to fields check
 
-      await expect(service.update(1, {})).rejects.toThrow(BadRequestException);
+      await expect(service.update('cfg-uid-1', {} as any)).rejects.toThrow(BadRequestException);
     });
 
     it('throws ConflictException when new combo already exists', async () => {
-      mockConn.query.mockResolvedValueOnce([
-        [{ id: 1, country: 'NG', leave_type_id: 1 }],
-      ]);
-      mockConn.query.mockResolvedValueOnce([[{ id: 99 }]]);
+      mockConn.query
+        .mockResolvedValueOnce([[{ unique_id: 'cfg-uid-1', country: 'country-uid-1', leave_type_id: 'lt-uid-1' }]]) // existing
+        .mockResolvedValueOnce([[{ unique_id: 'cfg-uid-other' }]]); // conflict found
 
-      await expect(service.update(1, { country: 'GH' })).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.update('cfg-uid-1', { country: 'country-uid-2' } as any),
+      ).rejects.toThrow(ConflictException);
     });
 
-    it('updates and returns updated config', async () => {
+    it('updates annualHours and returns updated config', async () => {
       mockPool.getConnection
         .mockResolvedValueOnce(mockConn)
         .mockResolvedValueOnce(mockFindOneConn);
 
-      mockConn.query.mockResolvedValueOnce([
-        [{ id: 1, country: 'NG', leave_type_id: 1 }],
-      ]);
-
-      mockConn.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+      mockConn.query
+        .mockResolvedValueOnce([[{ unique_id: 'cfg-uid-1', country: 'country-uid-1', leave_type_id: 'lt-uid-1' }]]) // fetch
+        .mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE
 
       mockFindOneConn.query.mockResolvedValueOnce([
-        [
-          {
-            id: 1,
-            annual_hours: 200,
-            country: 'NG',
-            leave_type_id: 1,
-          },
-        ],
+        [{ id: 1, unique_id: 'cfg-uid-1', annual_hours: 200, country: 'country-uid-1', leave_type_id: 'lt-uid-1' }],
       ]);
 
-      const result = await service.update(1, { annualHours: 200 });
+      const result = await service.update('cfg-uid-1', { annualHours: 200 } as any);
 
       expect(result.annual_hours).toBe(200);
+      expect(mockConn.query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('UPDATE leave_type_country_config SET'),
+        expect.arrayContaining([200, 'cfg-uid-1']),
+      );
+    });
+
+    it('always appends updated_at = NOW() to the SET clause', async () => {
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)
+        .mockResolvedValueOnce(mockFindOneConn);
+
+      mockConn.query
+        .mockResolvedValueOnce([[{ unique_id: 'cfg-uid-1', country: 'country-uid-1', leave_type_id: 'lt-uid-1' }]])
+        .mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+      mockFindOneConn.query.mockResolvedValueOnce([
+        [{ id: 1, unique_id: 'cfg-uid-1', annual_hours: 200 }],
+      ]);
+
+      await service.update('cfg-uid-1', { annualHours: 200 } as any);
+
+      const updateSql = mockConn.query.mock.calls[1][0];
+      expect(updateSql).toContain('updated_at = NOW()');
     });
   });
+
+  // ─── remove ──────────────────────────────────────────────────────────────────
 
   describe('remove', () => {
     it('throws NotFoundException when config not found', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
-      await expect(service.remove('uid123')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.remove('uid-missing')).rejects.toThrow(NotFoundException);
     });
 
-    it('deletes config and returns confirmation', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid123' }]]);
-      mockConn.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    it('soft-deletes config and returns confirmation', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[{ unique_id: 'cfg-uid-1' }]])  // existence check
+        .mockResolvedValueOnce([{ affectedRows: 1 }]);           // UPDATE
 
-      const result = await service.remove('uid123');
+      const result = await service.remove('cfg-uid-1');
 
-      expect(result).toEqual({ deleted: true, id: 'uid123' });
+      expect(result).toEqual({ deleted: true, id: 'cfg-uid-1' });
+      expect(mockConn.query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('SET status = "Deleted"'),
+        ['cfg-uid-1'],
+      );
     });
   });
 });

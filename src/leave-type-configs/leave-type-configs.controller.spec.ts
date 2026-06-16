@@ -1,10 +1,15 @@
+import { Test, TestingModule } from '@nestjs/testing';
 import { LeaveTypeConfigsController } from './leave-type-configs.controller';
+import { LeaveTypeConfigsService } from './leave-type-configs.service';
+import { CreateLeaveTypeConfigDto } from './dto/create-leave-type-config.dto';
+import { UpdateLeaveTypeConfigDto } from './dto/update-leave-type-config.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 describe('LeaveTypeConfigsController', () => {
   let controller: LeaveTypeConfigsController;
+  let service: LeaveTypeConfigsService;
 
-  const mockService: any = {
+  const mockLeaveTypeConfigsService = {
     create: jest.fn(),
     findAll: jest.fn(),
     findByLeaveType: jest.fn(),
@@ -23,58 +28,133 @@ describe('LeaveTypeConfigsController', () => {
     last_name: 'User',
   };
 
-  const mockReq = { user: mockUser };
+  const mockRequest = { user: mockUser };
 
-  beforeEach(() => {
-    jest.resetAllMocks();
-    controller = new LeaveTypeConfigsController(mockService);
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [LeaveTypeConfigsController],
+      providers: [{ provide: LeaveTypeConfigsService, useValue: mockLeaveTypeConfigsService }],
+    }).compile();
+
+    controller = module.get<LeaveTypeConfigsController>(LeaveTypeConfigsController);
+    service = module.get<LeaveTypeConfigsService>(LeaveTypeConfigsService);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
 
-  it('create proxies to service with user from request', async () => {
-    mockService.create.mockResolvedValue('created');
-    const dto = { leaveTypeId: 'lt1', country: 'NG', annualHours: 160 };
-    const result = await controller.create(dto as any, mockReq as any);
-    expect(mockService.create).toHaveBeenCalledWith(dto, mockUser);
-    expect(result).toBe('created');
+  // ─── create ──────────────────────────────────────────────────────────────────
+
+  describe('create', () => {
+    it('calls service.create with dto and user extracted from req', async () => {
+      const dto: CreateLeaveTypeConfigDto = {
+        leaveTypeId: 'lt-uid-1',
+        country: 'country-uid-1',
+        annualHours: 160,
+        monthlyAccrualHours: 13.33,
+      } as any;
+      const expected = { id: 1, unique_id: 'cfg-uid-1', leave_type_id: 'lt-uid-1', annual_hours: 160 };
+
+      mockLeaveTypeConfigsService.create.mockResolvedValue(expected);
+
+      const result = await controller.create(dto, mockRequest as any);
+
+      expect(result).toEqual(expected);
+      expect(service.create).toHaveBeenCalledWith(dto, mockUser);
+    });
   });
 
-  it('findAll proxies to service', async () => {
-    mockService.findAll.mockResolvedValue([]);
-    expect(await controller.findAll()).toEqual([]);
-    expect(mockService.findAll).toHaveBeenCalled();
+  // ─── findAll ─────────────────────────────────────────────────────────────────
+
+  describe('findAll', () => {
+    it('calls service.findAll and returns all configs', async () => {
+      const expected = [{ id: 1, annual_hours: 160 }];
+
+      mockLeaveTypeConfigsService.findAll.mockResolvedValue(expected);
+
+      const result = await controller.findAll();
+
+      expect(result).toEqual(expected);
+      expect(service.findAll).toHaveBeenCalled();
+    });
   });
 
-  it('findByLeaveType proxies to service', async () => {
-    mockService.findByLeaveType.mockResolvedValue([]);
-    expect(await controller.findByLeaveType('lt1')).toEqual([]);
-    expect(mockService.findByLeaveType).toHaveBeenCalledWith('lt1');
+  // ─── findByLeaveType ─────────────────────────────────────────────────────────
+
+  describe('findByLeaveType', () => {
+    it('calls service.findByLeaveType with leaveTypeId and returns configs', async () => {
+      const expected = [{ id: 1, leave_type_id: 'lt-uid-1' }];
+
+      mockLeaveTypeConfigsService.findByLeaveType.mockResolvedValue(expected);
+
+      const result = await controller.findByLeaveType('lt-uid-1');
+
+      expect(result).toEqual(expected);
+      expect(service.findByLeaveType).toHaveBeenCalledWith('lt-uid-1');
+    });
   });
 
-  it('findByCountry proxies to service', async () => {
-    mockService.findByCountry.mockResolvedValue([]);
-    expect(await controller.findByCountry('NG')).toEqual([]);
-    expect(mockService.findByCountry).toHaveBeenCalledWith('NG');
+  // ─── findByCountry ───────────────────────────────────────────────────────────
+
+  describe('findByCountry', () => {
+    it('calls service.findByCountry with country string and returns configs', async () => {
+      const expected = [{ id: 1, country: 'country-uid-1' }];
+
+      mockLeaveTypeConfigsService.findByCountry.mockResolvedValue(expected);
+
+      const result = await controller.findByCountry('country-uid-1');
+
+      expect(result).toEqual(expected);
+      expect(service.findByCountry).toHaveBeenCalledWith('country-uid-1');
+    });
   });
 
-  it('findOne proxies to service', async () => {
-    mockService.findOne.mockResolvedValue('one');
-    expect(await controller.findOne(1)).toBe('one');
-    expect(mockService.findOne).toHaveBeenCalledWith(1);
+  // ─── findOne ─────────────────────────────────────────────────────────────────
+
+  describe('findOne', () => {
+    it('calls service.findOne with id string and returns config', async () => {
+      const expected = { id: 1, unique_id: 'cfg-uid-1', annual_hours: 160 };
+
+      mockLeaveTypeConfigsService.findOne.mockResolvedValue(expected);
+
+      const result = await controller.findOne('cfg-uid-1');
+
+      expect(result).toEqual(expected);
+      expect(service.findOne).toHaveBeenCalledWith('cfg-uid-1');
+    });
   });
 
-  it('update proxies to service', async () => {
-    mockService.update.mockResolvedValue('updated');
-    expect(await controller.update(1, {} as any)).toBe('updated');
-    expect(mockService.update).toHaveBeenCalledWith(1, {});
+  // ─── update ──────────────────────────────────────────────────────────────────
+
+  describe('update', () => {
+    it('calls service.update with id string and dto, returns updated config', async () => {
+      const dto: UpdateLeaveTypeConfigDto = { annualHours: 200 } as any;
+      const expected = { id: 1, unique_id: 'cfg-uid-1', annual_hours: 200 };
+
+      mockLeaveTypeConfigsService.update.mockResolvedValue(expected);
+
+      const result = await controller.update('cfg-uid-1', dto);
+
+      expect(result).toEqual(expected);
+      expect(service.update).toHaveBeenCalledWith('cfg-uid-1', dto);
+    });
   });
 
-  it('remove proxies to service with string id', async () => {
-    mockService.remove.mockResolvedValue({ deleted: true, id: 'uid123' });
-    expect(await controller.remove('uid123')).toEqual({ deleted: true, id: 'uid123' });
-    expect(mockService.remove).toHaveBeenCalledWith('uid123');
+  // ─── remove ──────────────────────────────────────────────────────────────────
+
+  describe('remove', () => {
+    it('calls service.remove with id string and returns confirmation', async () => {
+      const expected = { deleted: true, id: 'cfg-uid-1' };
+
+      mockLeaveTypeConfigsService.remove.mockResolvedValue(expected);
+
+      const result = await controller.remove('cfg-uid-1');
+
+      expect(result).toEqual(expected);
+      expect(service.remove).toHaveBeenCalledWith('cfg-uid-1');
+    });
   });
 });
