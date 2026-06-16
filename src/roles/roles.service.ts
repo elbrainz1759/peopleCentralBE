@@ -49,9 +49,18 @@ export class RolesService {
       );
 
       if (existing.length > 0) {
-        throw new ConflictException(
-          `Role with name "${dto.name}" already exists`,
-        );
+        //if status is Deleted, change status to Active and update the role
+        if (existing[0].status === 'Deleted') {
+          await conn.execute(
+            'UPDATE roles SET name = ?, description = ?, status = "Active" WHERE name = ?',
+            [dto.name, dto.description, dto.name],
+          );
+          return this.findOne(existing[0].unique_id);
+        } else {
+          throw new ConflictException(
+            `Role with name "${dto.name}" already exists`,
+          );
+        }
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
@@ -82,10 +91,12 @@ export class RolesService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = '';
+      //Adding default search for status = 'Active' to the whereClause to only return active roles
+
+      let whereClause = 'WHERE status = "Active"';
 
       if (query.search) {
-        whereClause = 'WHERE name LIKE ? OR unique_id LIKE ?';
+        whereClause += ' AND (name LIKE ? OR unique_id LIKE ?)';
         const term = `%${query.search}%`;
         params.push(term, term);
       }
