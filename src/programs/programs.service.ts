@@ -193,10 +193,19 @@ export class ProgramsService {
         throw new NotFoundException(`Program with unique_id ${id} not found`);
       }
 
+      const fieldMap: Record<string, string> = {
+        name: 'name',
+        fundCode: 'fund_code',
+        startDate: 'start_date',
+        endDate: 'end_date',
+      };
+
       const fields = Object.keys(dto) as (keyof UpdateProgramDto)[];
       if (!fields.length) return this.findOne(id);
 
-      const setClauses = fields.map((f) => `${f} = ?`).join(', ');
+      const setClauses = fields
+        .map((f) => `${fieldMap[f as string] ?? f} = ?`)
+        .join(', ');
       const values = fields.map((f) => dto[f]);
 
       await conn.execute(
