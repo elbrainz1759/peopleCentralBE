@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseIntPipe,
   HttpCode,
   HttpStatus,
   Req,
@@ -49,20 +48,20 @@ export class ProgramsController {
 
   // GET /programs/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.programsService.findOne(id);
   }
 
   // PATCH /programs/:id
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProgramDto) {
+  update(@Param('id') id: string, @Body() dto: UpdateProgramDto) {
     return this.programsService.update(id, dto);
   }
 
   // DELETE /programs/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.programsService.remove(id);
   }
 }

@@ -48,21 +48,30 @@ export class ProgramsService {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM programs WHERE fund_code = ?',
+        'SELECT unique_id, status FROM programs WHERE fund_code = ?',
         [dto.fundCode],
       );
       if (existing.length > 0) {
-        throw new ConflictException(
-          `Program with fund_code "${dto.fundCode}" already exists`,
-        );
+        //if status is Deleted, change status to Active and update the program
+        if (existing[0].status === 'Deleted') {
+          await conn.execute(
+            'UPDATE programs SET name = ?, start_date = ?, end_date = ?, status = "Active" WHERE fund_code = ?',
+            [dto.name, dto.startDate, dto.endDate, dto.fundCode],
+          );
+          return this.findOne(existing[0].unique_id);
+        } else {
+          throw new ConflictException(
+            `Program with fund_code "${dto.fundCode}" already exists`,
+          );
+        }
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
       const created_by: string = user.email;
 
-      const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO programs (unique_id, name, fund_code, start_date, end_date, created_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+      await conn.query<mysql.ResultSetHeader>(
+        `INSERT INTO programs (unique_id, name, fund_code, start_date, end_date, created_by, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           unique_id,
           dto.name,
@@ -70,10 +79,11 @@ export class ProgramsService {
           dto.startDate,
           dto.endDate,
           created_by,
+          'Active',
         ],
       );
 
-      return this.findOne(result.insertId);
+      return this.findOne(unique_id);
     } catch (err) {
       if (err instanceof ConflictException) throw err;
       throw new InternalServerErrorException(err);
@@ -131,16 +141,16 @@ export class ProgramsService {
 
   // GET /programs/:id
   // Either use pool directly everywhere (simplest):
-  async findOne(id: number): Promise<Program> {
+  async findOne(id: string): Promise<Program> {
     const conn = await this.pool.getConnection();
 
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM programs WHERE id = ?',
+        'SELECT * FROM programs WHERE unique_id = ?',
         [id],
       );
       if (!rows.length)
-        throw new NotFoundException(`Program with id ${id} not found`);
+        throw new NotFoundException(`Program with unique_id ${id} not found`);
       return rows[0] as Program;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
@@ -173,15 +183,15 @@ export class ProgramsService {
   }
 
   // PATCH /programs/:id
-  async update(id: number, dto: UpdateProgramDto): Promise<Program> {
+  async update(id: string, dto: UpdateProgramDto): Promise<Program> {
     const conn = await this.pool.getConnection();
     try {
       const [findProgram] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM programs WHERE id = ?',
+        'SELECT unique_id FROM programs WHERE unique_id = ?',
         [id],
       );
       if (!findProgram.length) {
-        throw new NotFoundException(`Program with id ${id} not found`);
+        throw new NotFoundException(`Program with unique_id ${id} not found`);
       }
 
       const fields = Object.keys(dto) as (keyof UpdateProgramDto)[];
@@ -190,10 +200,10 @@ export class ProgramsService {
       const setClauses = fields.map((f) => `${f} = ?`).join(', ');
       const values = fields.map((f) => dto[f]);
 
-      await conn.execute(`UPDATE programs SET ${setClauses} WHERE id = ?`, [
-        ...values,
-        id,
-      ]);
+      await conn.execute(
+        `UPDATE programs SET ${setClauses} WHERE unique_id = ?`,
+        [...values, id],
+      );
 
       return this.findOne(id);
     } catch (err) {
@@ -205,18 +215,21 @@ export class ProgramsService {
   }
 
   // DELETE /programs/:id
-  async remove(id: number): Promise<{ message: string }> {
+  async remove(id: string): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
       const [findProgram] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM programs WHERE id = ?',
+        'SELECT unique_id FROM programs WHERE unique_id = ?',
         [id],
       );
       if (!findProgram.length) {
-        throw new NotFoundException(`Program with id ${id} not found`);
+        throw new NotFoundException(`Program with unique_id ${id} not found`);
       }
 
-      await conn.execute('DELETE FROM programs WHERE id = ?', [id]);
+      await conn.execute(
+        "UPDATE programs SET status = 'Deleted' WHERE unique_id = ?",
+        [id],
+      );
 
       return { message: `Program ${id} deleted successfully` };
     } catch (err) {
