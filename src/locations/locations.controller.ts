@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   HttpCode,
+  Req,
   HttpStatus,
 } from '@nestjs/common';
 import { LocationsService } from './locations.service';
@@ -15,6 +16,8 @@ import { CreateLocationDto } from './dto/create-location.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { Public } from '../decorators/public.decorator';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 
 @Controller('locations')
 export class LocationsController {
@@ -23,8 +26,9 @@ export class LocationsController {
   // POST /locations
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateLocationDto) {
-    return this.locationsService.create(dto);
+  create(@Body() dto: CreateLocationDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.locationsService.create(dto, user);
   }
 
   // GET /locations?page=1&limit=10&search=keyword

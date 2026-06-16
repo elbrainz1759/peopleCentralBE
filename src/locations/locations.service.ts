@@ -10,6 +10,7 @@ import { CreateLocationDto } from './dto/create-location.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { randomBytes } from 'crypto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export class LocationsService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /locations
-  async create(dto: CreateLocationDto): Promise<Location> {
+  async create(dto: CreateLocationDto, user: RequestUser): Promise<Location> {
     const conn = await this.pool.getConnection();
     try {
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
@@ -77,7 +78,7 @@ export class LocationsService {
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
-      const created_by: string = 'System';
+      const created_by: string = user.email;
 
       await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO locations (unique_id, name, country, created_by, status)
