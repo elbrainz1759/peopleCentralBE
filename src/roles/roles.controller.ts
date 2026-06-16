@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseIntPipe,
   HttpCode,
   HttpStatus,
   Req,
@@ -45,20 +44,20 @@ export class RolesController {
 
   // GET /roles/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.rolesService.findOne(id);
   }
 
   // PATCH /roles/:id
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRoleDto) {
+  update(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
     return this.rolesService.update(id, dto);
   }
 
   // DELETE /roles/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.rolesService.remove(id);
   }
 }

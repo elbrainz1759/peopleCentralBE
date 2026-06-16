@@ -4,6 +4,7 @@ import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 describe('RolesController', () => {
   let controller: RolesController;
@@ -18,7 +19,7 @@ describe('RolesController', () => {
     remove: jest.fn(),
   };
 
-  const mockUser = {
+  const mockUser: RequestUser = {
     id: 1,
     email: 'hr@mercycorps.org',
     role: 'Admin',
@@ -27,21 +28,14 @@ describe('RolesController', () => {
     last_name: 'User',
   };
 
-  const mockRequest = {
-    user: mockUser,
-  };
+  const mockRequest = { user: mockUser };
 
   beforeEach(async () => {
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [RolesController],
-      providers: [
-        {
-          provide: RolesService,
-          useValue: mockRolesService,
-        },
-      ],
+      providers: [{ provide: RolesService, useValue: mockRolesService }],
     }).compile();
 
     controller = module.get<RolesController>(RolesController);
@@ -52,130 +46,99 @@ describe('RolesController', () => {
     expect(controller).toBeDefined();
   });
 
+  // ─── create ────────────────────────────────────────────────────────────────
+
   describe('create', () => {
-    it('should create a role', async () => {
-      const dto: CreateRoleDto = {
-        name: 'Admin',
-        description: 'Administrator role',
-      } as any;
+    it('calls service.create with dto and user extracted from req', async () => {
+      const dto: CreateRoleDto = { name: 'Admin', description: 'Administrator role' } as any;
+      const expected = { id: 1, unique_id: 'role-uid-1', name: 'Admin', created_by: mockUser.email };
 
-      const expectedResult = {
-        id: 1,
-        unique_id: 'role-uid-1',
-        name: 'Admin',
-        description: 'Administrator role',
-        created_by: mockUser.email,
-      };
-
-      mockRolesService.create.mockResolvedValue(expectedResult);
+      mockRolesService.create.mockResolvedValue(expected);
 
       const result = await controller.create(dto, mockRequest as any);
 
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual(expected);
       expect(service.create).toHaveBeenCalledWith(dto, mockUser);
     });
   });
 
-  describe('findAll', () => {
-    it('should return paginated roles', async () => {
-      const query: PaginationQueryDto = {
-        page: 1,
-        limit: 10,
-        search: 'Admin',
-      } as any;
+  // ─── findAll ───────────────────────────────────────────────────────────────
 
-      const expectedResult = {
-        data: [
-          {
-            id: 1,
-            name: 'Admin',
-            description: 'Administrator role',
-          },
-        ],
-        meta: {
-          total: 1,
-          page: 1,
-          limit: 10,
-          last_page: 1,
-        },
+  describe('findAll', () => {
+    it('calls service.findAll with query and returns paginated result', async () => {
+      const query: PaginationQueryDto = { page: 1, limit: 10, search: 'Admin' } as any;
+      const expected = {
+        data: [{ id: 1, name: 'Admin', description: 'Administrator role' }],
+        meta: { total: 1, page: 1, limit: 10, last_page: 1 },
       };
 
-      mockRolesService.findAll.mockResolvedValue(expectedResult);
+      mockRolesService.findAll.mockResolvedValue(expected);
 
       const result = await controller.findAll(query);
 
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual(expected);
       expect(service.findAll).toHaveBeenCalledWith(query);
     });
   });
 
-  describe('findByUniqueId', () => {
-    it('should return role by unique id', async () => {
-      const expectedResult = {
-        id: 1,
-        unique_id: 'role-uid-1',
-        name: 'Admin',
-      };
+  // ─── findByUniqueId ────────────────────────────────────────────────────────
 
-      mockRolesService.findByUniqueId.mockResolvedValue(expectedResult);
+  describe('findByUniqueId', () => {
+    it('calls service.findByUniqueId with uniqueId string and returns role', async () => {
+      const expected = { id: 1, unique_id: 'role-uid-1', name: 'Admin' };
+
+      mockRolesService.findByUniqueId.mockResolvedValue(expected);
 
       const result = await controller.findByUniqueId('role-uid-1');
 
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual(expected);
       expect(service.findByUniqueId).toHaveBeenCalledWith('role-uid-1');
     });
   });
 
+  // ─── findOne ───────────────────────────────────────────────────────────────
+
   describe('findOne', () => {
-    it('should return one role', async () => {
-      const expectedResult = {
-        id: 1,
-        unique_id: 'role-uid-1',
-        name: 'Admin',
-      };
+    it('calls service.findOne with id string and returns role', async () => {
+      const expected = { id: 1, unique_id: 'role-uid-1', name: 'Admin' };
 
-      mockRolesService.findOne.mockResolvedValue(expectedResult);
+      mockRolesService.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(1);
+      const result = await controller.findOne('role-uid-1');
 
-      expect(result).toEqual(expectedResult);
-      expect(service.findOne).toHaveBeenCalledWith(1);
+      expect(result).toEqual(expected);
+      expect(service.findOne).toHaveBeenCalledWith('role-uid-1');
     });
   });
+
+  // ─── update ────────────────────────────────────────────────────────────────
 
   describe('update', () => {
-    it('should update a role', async () => {
-      const dto: UpdateRoleDto = {
-        name: 'HR Admin',
-      } as any;
+    it('calls service.update with id string and dto, returns updated role', async () => {
+      const dto: UpdateRoleDto = { name: 'HR Admin' } as any;
+      const expected = { id: 1, unique_id: 'role-uid-1', name: 'HR Admin' };
 
-      const expectedResult = {
-        id: 1,
-        unique_id: 'role-uid-1',
-        name: 'HR Admin',
-      };
+      mockRolesService.update.mockResolvedValue(expected);
 
-      mockRolesService.update.mockResolvedValue(expectedResult);
+      const result = await controller.update('role-uid-1', dto);
 
-      const result = await controller.update(1, dto);
-
-      expect(result).toEqual(expectedResult);
-      expect(service.update).toHaveBeenCalledWith(1, dto);
+      expect(result).toEqual(expected);
+      expect(service.update).toHaveBeenCalledWith('role-uid-1', dto);
     });
   });
 
+  // ─── remove ────────────────────────────────────────────────────────────────
+
   describe('remove', () => {
-    it('should delete a role', async () => {
-      const expectedResult = {
-        message: 'Role 1 deleted successfully',
-      };
+    it('calls service.remove with id string and returns confirmation', async () => {
+      const expected = { message: 'Role role-uid-1 deleted successfully' };
 
-      mockRolesService.remove.mockResolvedValue(expectedResult);
+      mockRolesService.remove.mockResolvedValue(expected);
 
-      const result = await controller.remove(1);
+      const result = await controller.remove('role-uid-1');
 
-      expect(result).toEqual(expectedResult);
-      expect(service.remove).toHaveBeenCalledWith(1);
+      expect(result).toEqual(expected);
+      expect(service.remove).toHaveBeenCalledWith('role-uid-1');
     });
   });
 });

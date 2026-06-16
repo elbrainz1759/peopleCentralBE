@@ -57,13 +57,13 @@ export class RolesService {
       const unique_id: string = randomBytes(16).toString('hex');
       const created_by: string = user.email;
 
-      const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO roles (unique_id, name, description, created_by)
-         VALUES (?, ?, ?, ?)`,
-        [unique_id, dto.name, dto.description, created_by],
+      await conn.query<mysql.ResultSetHeader>(
+        `INSERT INTO roles (unique_id, name, description, created_by, status)
+         VALUES (?, ?, ?, ?, ?)`,
+        [unique_id, dto.name, dto.description, created_by, 'Active'],
       );
 
-      return this.findOne(result.insertId);
+      return this.findOne(unique_id);
     } catch (err) {
       if (err instanceof ConflictException) throw err;
       throw new InternalServerErrorException(err);
@@ -121,12 +121,12 @@ export class RolesService {
   }
 
   // GET /roles/:id
-  async findOne(id: number): Promise<Role> {
+  async findOne(id: string): Promise<Role> {
     const conn = await this.pool.getConnection();
 
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM roles WHERE id = ?',
+        'SELECT * FROM roles WHERE unique_id = ?',
         [id],
       );
 
@@ -169,12 +169,12 @@ export class RolesService {
   }
 
   // PATCH /roles/:id
-  async update(id: number, dto: UpdateRoleDto): Promise<Role> {
+  async update(id: string, dto: UpdateRoleDto): Promise<Role> {
     const conn = await this.pool.getConnection();
 
     try {
       const [findRole] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM roles WHERE id = ?',
+        'SELECT unique_id FROM roles WHERE unique_id = ?',
         [id],
       );
 
@@ -191,7 +191,7 @@ export class RolesService {
       const setClauses = fields.map((f) => `${f} = ?`).join(', ');
       const values = fields.map((f) => dto[f]);
 
-      await conn.execute(`UPDATE roles SET ${setClauses} WHERE id = ?`, [
+      await conn.execute(`UPDATE roles SET ${setClauses} WHERE unique_id = ?`, [
         ...values,
         id,
       ]);
@@ -206,12 +206,12 @@ export class RolesService {
   }
 
   // DELETE /roles/:id
-  async remove(id: number): Promise<{ message: string }> {
+  async remove(id: string): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
 
     try {
       const [findRole] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM roles WHERE id = ?',
+        'SELECT unique_id FROM roles WHERE unique_id = ?',
         [id],
       );
 
@@ -219,7 +219,10 @@ export class RolesService {
         throw new NotFoundException(`Role with id ${id} not found`);
       }
 
-      await conn.execute('DELETE FROM roles WHERE id = ?', [id]);
+      await conn.execute(
+        "UPDATE roles SET status = 'Deleted' WHERE unique_id = ?",
+        [id],
+      );
 
       return { message: `Role ${id} deleted successfully` };
     } catch (err) {
