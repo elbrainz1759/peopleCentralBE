@@ -6,6 +6,7 @@ import {
   UpdateProgramDto,
   PaginationQueryDto,
 } from './dto/program.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 describe('ProgramsController', () => {
   let controller: ProgramsController;
@@ -20,7 +21,7 @@ describe('ProgramsController', () => {
     remove: jest.fn(),
   };
 
-  const mockUser = {
+  const mockUser: RequestUser = {
     id: 1,
     email: 'hr@mercycorps.org',
     role: 'Admin',
@@ -29,21 +30,14 @@ describe('ProgramsController', () => {
     last_name: 'User',
   };
 
-  const mockRequest = {
-    user: mockUser,
-  };
+  const mockRequest = { user: mockUser };
 
   beforeEach(async () => {
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProgramsController],
-      providers: [
-        {
-          provide: ProgramsService,
-          useValue: mockProgramsService,
-        },
-      ],
+      providers: [{ provide: ProgramsService, useValue: mockProgramsService }],
     }).compile();
 
     controller = module.get<ProgramsController>(ProgramsController);
@@ -54,8 +48,10 @@ describe('ProgramsController', () => {
     expect(controller).toBeDefined();
   });
 
+  // ─── create ────────────────────────────────────────────────────────────────
+
   describe('create', () => {
-    it('should create a program', async () => {
+    it('calls service.create with dto and req.user, returns result', async () => {
       const dto: CreateProgramDto = {
         name: 'BEGE',
         fundCode: 12345,
@@ -63,125 +59,104 @@ describe('ProgramsController', () => {
         endDate: '2026-12-31',
       } as any;
 
-      const expectedResult = {
+      const expected = {
         id: 1,
-        unique_id: 'program-uid-1',
+        unique_id: 'uid-1',
         name: 'BEGE',
         fund_code: 12345,
         start_date: '2026-01-01',
         end_date: '2026-12-31',
         created_by: mockUser.email,
+        status: 'Active',
       };
 
-      mockProgramsService.create.mockResolvedValue(expectedResult);
+      mockProgramsService.create.mockResolvedValue(expected);
 
       const result = await controller.create(dto, mockRequest as any);
 
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual(expected);
       expect(service.create).toHaveBeenCalledWith(dto, mockUser);
     });
   });
 
-  describe('findAll', () => {
-    it('should return paginated programs', async () => {
-      const query: PaginationQueryDto = {
-        page: 1,
-        limit: 10,
-        search: 'BEGE',
-      } as any;
+  // ─── findAll ───────────────────────────────────────────────────────────────
 
-      const expectedResult = {
-        data: [
-          {
-            id: 1,
-            name: 'BEGE',
-            fund_code: 12345,
-          },
-        ],
-        meta: {
-          total: 1,
-          page: 1,
-          limit: 10,
-          last_page: 1,
-        },
+  describe('findAll', () => {
+    it('calls service.findAll with query and returns paginated result', async () => {
+      const query: PaginationQueryDto = { page: 1, limit: 10, search: 'BEGE' } as any;
+
+      const expected = {
+        data: [{ id: 1, name: 'BEGE', fund_code: 12345 }],
+        meta: { total: 1, page: 1, limit: 10, last_page: 1 },
       };
 
-      mockProgramsService.findAll.mockResolvedValue(expectedResult);
+      mockProgramsService.findAll.mockResolvedValue(expected);
 
       const result = await controller.findAll(query);
 
-      expect(result).toEqual(expectedResult);
+      expect(result).toEqual(expected);
       expect(service.findAll).toHaveBeenCalledWith(query);
     });
   });
 
+  // ─── findByUniqueId ────────────────────────────────────────────────────────
+
   describe('findByUniqueId', () => {
-    it('should return program by unique id', async () => {
-      const expectedResult = {
-        id: 1,
-        unique_id: 'program-uid-1',
-        name: 'BEGE',
-      };
+    it('calls service.findByUniqueId with uniqueId string and returns program', async () => {
+      const expected = { id: 1, unique_id: 'uid-1', name: 'BEGE' };
 
-      mockProgramsService.findByUniqueId.mockResolvedValue(expectedResult);
+      mockProgramsService.findByUniqueId.mockResolvedValue(expected);
 
-      const result = await controller.findByUniqueId('program-uid-1');
+      const result = await controller.findByUniqueId('uid-1');
 
-      expect(result).toEqual(expectedResult);
-      expect(service.findByUniqueId).toHaveBeenCalledWith('program-uid-1');
+      expect(result).toEqual(expected);
+      expect(service.findByUniqueId).toHaveBeenCalledWith('uid-1');
     });
   });
+
+  // ─── findOne ───────────────────────────────────────────────────────────────
 
   describe('findOne', () => {
-    it('should return one program', async () => {
-      const expectedResult = {
-        id: 1,
-        unique_id: 'program-uid-1',
-        name: 'BEGE',
-      };
+    it('calls service.findOne with unique_id string and returns program', async () => {
+      const expected = { id: 1, unique_id: 'uid-1', name: 'BEGE' };
 
-      mockProgramsService.findOne.mockResolvedValue(expectedResult);
+      mockProgramsService.findOne.mockResolvedValue(expected);
 
-      const result = await controller.findOne(1);
+      const result = await controller.findOne('uid-1');
 
-      expect(result).toEqual(expectedResult);
-      expect(service.findOne).toHaveBeenCalledWith(1);
+      expect(result).toEqual(expected);
+      expect(service.findOne).toHaveBeenCalledWith('uid-1');
     });
   });
+
+  // ─── update ────────────────────────────────────────────────────────────────
 
   describe('update', () => {
-    it('should update a program', async () => {
-      const dto: UpdateProgramDto = {
-        name: 'Updated BEGE',
-      } as any;
+    it('calls service.update with unique_id string and dto, returns updated program', async () => {
+      const dto: UpdateProgramDto = { name: 'Updated BEGE' } as any;
+      const expected = { id: 1, unique_id: 'uid-1', name: 'Updated BEGE' };
 
-      const expectedResult = {
-        id: 1,
-        unique_id: 'program-uid-1',
-        name: 'Updated BEGE',
-      };
+      mockProgramsService.update.mockResolvedValue(expected);
 
-      mockProgramsService.update.mockResolvedValue(expectedResult);
+      const result = await controller.update('uid-1', dto);
 
-      const result = await controller.update(1, dto);
-
-      expect(result).toEqual(expectedResult);
-      expect(service.update).toHaveBeenCalledWith(1, dto);
+      expect(result).toEqual(expected);
+      expect(service.update).toHaveBeenCalledWith('uid-1', dto);
     });
   });
 
+  // ─── remove ────────────────────────────────────────────────────────────────
+
   describe('remove', () => {
-    it('should delete a program', async () => {
-      const expectedResult = {
-        message: 'Program 1 deleted successfully',
-      };
+    it('calls service.remove with unique_id string and returns confirmation', async () => {
+      const expected = { message: 'Program uid-1 deleted successfully' };
 
-      mockProgramsService.remove.mockResolvedValue(expectedResult);
+      mockProgramsService.remove.mockResolvedValue(expected);
 
-      const result = await controller.remove(1);
+      const result = await controller.remove('uid-1');
 
-      expect(result).toEqual(expectedResult);
-      expect(service.remove).toHaveBeenCalledWith(1);
+      expect(result).toEqual(expected);
+      expect(service.remove).toHaveBeenCalledWith('uid-1');
     });
   });
 });

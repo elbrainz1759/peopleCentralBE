@@ -1,3 +1,4 @@
+
 import {
   ConflictException,
   NotFoundException,
@@ -8,9 +9,7 @@ import { RequestUser } from 'src/common/interfaces/request-user.interface';
 describe('ProgramsService', () => {
   let service: ProgramsService;
 
-  const mockPool: any = {
-    getConnection: jest.fn(),
-  };
+  const mockPool: any = { getConnection: jest.fn() };
 
   const mockConn: any = {
     query: jest.fn(),
@@ -43,6 +42,8 @@ describe('ProgramsService', () => {
     expect(service).toBeDefined();
   });
 
+  // ─── create ────────────────────────────────────────────────────────────────
+
   describe('create', () => {
     const dto: any = {
       name: 'BEGE',
@@ -51,223 +52,237 @@ describe('ProgramsService', () => {
       endDate: '2026-12-31',
     };
 
-    it('throws ConflictException when fund code already exists', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
+    it('throws ConflictException when fund code exists and status is Active', async () => {
+      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid-1', status: 'Active' }]]);
 
-      await expect(service.create(dto, mockUser)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(service.create(dto, mockUser)).rejects.toThrow(ConflictException);
     });
 
-    it('creates program and returns it', async () => {
+    it('restores a soft-deleted program when fund code exists with status Deleted', async () => {
       mockPool.getConnection
         .mockResolvedValueOnce(mockConn)
         .mockResolvedValueOnce(mockFindOneConn);
 
-      mockConn.query.mockResolvedValueOnce([[]]);
-      mockConn.query.mockResolvedValueOnce([{ insertId: 1 }]);
+      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid-1', status: 'Deleted' }]]);
+      mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
       mockFindOneConn.query.mockResolvedValueOnce([
         [
           {
             id: 1,
-            unique_id: 'program-uid-1',
+            unique_id: 'uid-1',
             name: 'BEGE',
             fund_code: 12345,
             start_date: '2026-01-01',
             end_date: '2026-12-31',
             created_by: mockUser.email,
+            status: 'Active',
           },
         ],
       ]);
 
       const result = await service.create(dto, mockUser);
 
-      expect(result.id).toBe(1);
+      expect(mockConn.execute).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE programs SET'),
+        [dto.name, dto.startDate, dto.endDate, dto.fundCode],
+      );
+      expect(result.unique_id).toBe('uid-1');
+      expect(result.status).toBe('Active');
+    });
+
+    it('creates a new program and returns it', async () => {
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)
+        .mockResolvedValueOnce(mockFindOneConn);
+
+      mockConn.query
+        .mockResolvedValueOnce([[]])                        // no existing fund_code
+        .mockResolvedValueOnce([{ insertId: 1 }]);          // INSERT
+
+      mockFindOneConn.query.mockResolvedValueOnce([
+        [
+          {
+            id: 1,
+            unique_id: expect.any(String),
+            name: 'BEGE',
+            fund_code: 12345,
+            start_date: '2026-01-01',
+            end_date: '2026-12-31',
+            created_by: mockUser.email,
+            status: 'Active',
+          },
+        ],
+      ]);
+
+      const result = await service.create(dto, mockUser);
+
       expect(result.name).toBe('BEGE');
       expect(result.created_by).toBe(mockUser.email);
+      expect(mockConn.query).toHaveBeenCalledTimes(2);
     });
   });
 
+  // ─── findAll ───────────────────────────────────────────────────────────────
+
   describe('findAll', () => {
     it('returns paginated programs without search', async () => {
-      const query: any = {
-        page: 1,
-        limit: 10,
-      };
+      const query: any = { page: 1, limit: 10 };
+      const rows = [{ id: 1, name: 'BEGE', fund_code: 12345 }];
 
-      const rows = [
-        {
-          id: 1,
-          name: 'BEGE',
-          fund_code: 12345,
-        },
-      ];
-
-      mockConn.query.mockResolvedValueOnce([[{ total: 1 }]]);
-      mockConn.query.mockResolvedValueOnce([rows]);
+      mockConn.query
+        .mockResolvedValueOnce([[{ total: 1 }]])
+        .mockResolvedValueOnce([rows]);
 
       const result = await service.findAll(query);
 
       expect(result.data).toEqual(rows);
-      expect(result.meta).toEqual({
-        total: 1,
-        page: 1,
-        limit: 10,
-        last_page: 1,
-      });
+      expect(result.meta).toEqual({ total: 1, page: 1, limit: 10, last_page: 1 });
     });
 
-    it('returns paginated programs with search', async () => {
-      const query: any = {
-        page: 1,
-        limit: 10,
-        search: 'BEGE',
-      };
+    it('returns paginated programs with search term', async () => {
+      const query: any = { page: 1, limit: 10, search: 'BEGE' };
+      const rows = [{ id: 1, name: 'BEGE', fund_code: 12345 }];
 
-      const rows = [
-        {
-          id: 1,
-          name: 'BEGE',
-          fund_code: 12345,
-        },
-      ];
-
-      mockConn.query.mockResolvedValueOnce([[{ total: 1 }]]);
-      mockConn.query.mockResolvedValueOnce([rows]);
+      mockConn.query
+        .mockResolvedValueOnce([[{ total: 1 }]])
+        .mockResolvedValueOnce([rows]);
 
       const result = await service.findAll(query);
 
       expect(result.data).toEqual(rows);
       expect(result.meta.total).toBe(1);
+      // WHERE clause should have been injected
+      expect(mockConn.query).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining('WHERE'),
+        ['%BEGE%', '%BEGE%'],
+      );
+    });
+
+    it('uses defaults when page/limit are omitted', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[{ total: 0 }]])
+        .mockResolvedValueOnce([[]]);
+
+      const result = await service.findAll({} as any);
+
+      expect(result.meta.page).toBe(1);
+      expect(result.meta.limit).toBe(10);
     });
   });
 
+  // ─── findOne ───────────────────────────────────────────────────────────────
+
   describe('findOne', () => {
     it('returns program when found', async () => {
-      const program = {
-        id: 1,
-        unique_id: 'program-uid-1',
-        name: 'BEGE',
-      };
+      const program = { id: 1, unique_id: 'uid-1', name: 'BEGE' };
 
       mockConn.query.mockResolvedValueOnce([[program]]);
 
-      const result = await service.findOne(1);
+      const result = await service.findOne('uid-1');
 
       expect(result).toEqual(program);
+      expect(mockConn.query).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE unique_id = ?'),
+        ['uid-1'],
+      );
     });
 
     it('throws NotFoundException when program not found', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
-      await expect(service.findOne(1)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('uid-missing')).rejects.toThrow(NotFoundException);
     });
   });
 
+  // ─── findByUniqueId ────────────────────────────────────────────────────────
+
   describe('findByUniqueId', () => {
-    it('returns program by unique id', async () => {
-      const program = {
-        id: 1,
-        unique_id: 'program-uid-1',
-        name: 'BEGE',
-      };
+    it('returns program by unique_id', async () => {
+      const program = { id: 1, unique_id: 'uid-1', name: 'BEGE' };
 
       mockConn.query.mockResolvedValueOnce([[program]]);
 
-      const result = await service.findByUniqueId('program-uid-1');
+      const result = await service.findByUniqueId('uid-1');
 
       expect(result).toEqual(program);
     });
 
-    it('throws NotFoundException when unique id not found', async () => {
+    it('throws NotFoundException when unique_id not found', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
-      await expect(service.findByUniqueId('program-uid-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.findByUniqueId('uid-missing')).rejects.toThrow(NotFoundException);
     });
   });
+
+  // ─── update ────────────────────────────────────────────────────────────────
 
   describe('update', () => {
     it('throws NotFoundException when program not found', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
-      await expect(service.update(1, { name: 'Updated BEGE' } as any)).rejects.toThrow(
+      await expect(service.update('uid-missing', { name: 'X' } as any)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('returns existing program when no fields are provided', async () => {
+    it('returns existing program unchanged when dto is empty', async () => {
       mockPool.getConnection
         .mockResolvedValueOnce(mockConn)
         .mockResolvedValueOnce(mockFindOneConn);
 
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
-
+      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid-1' }]]);
       mockFindOneConn.query.mockResolvedValueOnce([
-        [
-          {
-            id: 1,
-            unique_id: 'program-uid-1',
-            name: 'BEGE',
-          },
-        ],
+        [{ id: 1, unique_id: 'uid-1', name: 'BEGE' }],
       ]);
 
-      const result = await service.update(1, {} as any);
+      const result = await service.update('uid-1', {} as any);
 
-      expect(result.id).toBe(1);
       expect(result.name).toBe('BEGE');
+      expect(mockConn.execute).not.toHaveBeenCalled();
     });
 
-    it('updates program and returns updated program', async () => {
+    it('updates program fields and returns updated program', async () => {
       mockPool.getConnection
         .mockResolvedValueOnce(mockConn)
         .mockResolvedValueOnce(mockFindOneConn);
 
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
+      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid-1' }]]);
       mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
-
       mockFindOneConn.query.mockResolvedValueOnce([
-        [
-          {
-            id: 1,
-            unique_id: 'program-uid-1',
-            name: 'Updated BEGE',
-            fund_code: 12345,
-          },
-        ],
+        [{ id: 1, unique_id: 'uid-1', name: 'Updated BEGE', fund_code: 12345 }],
       ]);
 
-      const result = await service.update(1, {
-        name: 'Updated BEGE',
-      } as any);
+      const result = await service.update('uid-1', { name: 'Updated BEGE' } as any);
 
       expect(result.name).toBe('Updated BEGE');
-      expect(mockConn.execute).toHaveBeenCalled();
+      expect(mockConn.execute).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE programs SET'),
+        expect.arrayContaining(['Updated BEGE', 'uid-1']),
+      );
     });
   });
+
+  // ─── remove ────────────────────────────────────────────────────────────────
 
   describe('remove', () => {
     it('throws NotFoundException when program not found', async () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
-      await expect(service.remove(1)).rejects.toThrow(NotFoundException);
+      await expect(service.remove('uid-missing')).rejects.toThrow(NotFoundException);
     });
 
-    it('deletes program and returns confirmation message', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]);
+    it('soft-deletes program and returns confirmation message', async () => {
+      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid-1' }]]);
       mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
-      const result = await service.remove(1);
+      const result = await service.remove('uid-1');
 
-      expect(result).toEqual({
-        message: 'Program 1 deleted successfully',
-      });
+      expect(result).toEqual({ message: 'Program uid-1 deleted successfully' });
       expect(mockConn.execute).toHaveBeenCalledWith(
-        'DELETE FROM programs WHERE id = ?',
-        [1],
+        expect.stringContaining("SET status = 'Deleted'"),
+        ['uid-1'],
       );
     });
   });
