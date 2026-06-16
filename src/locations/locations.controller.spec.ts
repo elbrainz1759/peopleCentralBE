@@ -4,6 +4,7 @@ import { LocationsService } from './locations.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 describe('LocationsController', () => {
   let controller: LocationsController;
@@ -17,6 +18,17 @@ describe('LocationsController', () => {
     update: jest.fn(),
     remove: jest.fn(),
   };
+
+  const mockUser: RequestUser = {
+    id: 1,
+    email: 'admin@mc.org',
+    role: 'Admin',
+    unique_id: 'abc123',
+    first_name: 'Admin',
+    last_name: 'User',
+  };
+
+  const mockRequest = { user: mockUser };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -37,16 +49,16 @@ describe('LocationsController', () => {
   // ─── create ──────────────────────────────────────────────────────────────────
 
   describe('create', () => {
-    it('calls service.create with dto and returns result', async () => {
+    it('calls service.create with dto and user, returns result', async () => {
       const dto: CreateLocationDto = { name: 'Abuja', countryId: 'country-uid-1' } as any;
       const expected = { id: 1, unique_id: 'loc-uid-1', name: 'Abuja', country: 'Nigeria' };
 
       mockLocationsService.create.mockResolvedValue(expected);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, mockRequest as any);
 
       expect(result).toEqual(expected);
-      expect(service.create).toHaveBeenCalledWith(dto);
+      expect(service.create).toHaveBeenCalledWith(dto, mockUser);
     });
   });
 

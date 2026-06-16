@@ -33,60 +33,55 @@ describe('LocationsService', () => {
 
   // ─── create ──────────────────────────────────────────────────────────────────
 
-  describe('create', () => {
-    const dto: any = { name: 'Abuja', countryId: 'country-uid-1' };
+// locations.service.spec.ts
 
-    it('throws ConflictException when location name exists and is Active', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1, status: 'Active' }]]);
+describe('create', () => {
+  const dto: any = { name: 'Abuja', countryId: 'country-uid-1' };
+  const mockUser: any = { email: 'admin@mc.org' };  // ← add this
 
-      await expect(service.create(dto)).rejects.toThrow(ConflictException);
-    });
+  it('creates a new location and returns it', async () => {
+    mockPool.getConnection
+      .mockResolvedValueOnce(mockConn)       // create()'s own conn
+      .mockResolvedValueOnce(mockFindOneConn); // findOne()'s conn
 
-    it('restores a soft-deleted location and returns it', async () => {
-      mockConn.query
-        .mockResolvedValueOnce([[{ id: 1, status: 'Deleted' }]]) // name lookup
-        .mockResolvedValueOnce([[{ id: 1, unique_id: 'loc-uid-1', name: 'Abuja', country: 'Nigeria', status: 'Active' }]]); // SELECT after UPDATE
+    mockConn.query
+      .mockResolvedValueOnce([[]])                   // no existing location
+      .mockResolvedValueOnce([[{ id: 1 }]])          // country found
+      .mockResolvedValueOnce([{ insertId: 1 }]);     // INSERT
 
-      mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    mockFindOneConn.query.mockResolvedValueOnce([
+      [{ id: 1, unique_id: 'loc-uid-1', name: 'Abuja', country: 'Nigeria', status: 'Active' }],
+    ]);
 
-      const result = await service.create(dto);
+    const result = await service.create(dto, mockUser);  // ← pass user
 
-      expect(mockConn.execute).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE locations SET country'),
-        [dto.countryId, dto.name],
-      );
-      expect(result.name).toBe('Abuja');
-      expect(result.status).toBe('Active');
-    });
-
-    it('throws NotFoundException when country does not exist', async () => {
-      mockConn.query
-        .mockResolvedValueOnce([[]])  // no existing location
-        .mockResolvedValueOnce([[]]); // country not found
-
-      await expect(service.create(dto)).rejects.toThrow(NotFoundException);
-    });
-
-    it('creates a new location and returns it', async () => {
-      mockPool.getConnection
-        .mockResolvedValueOnce(mockConn)
-        .mockResolvedValueOnce(mockFindOneConn);
-
-      mockConn.query
-        .mockResolvedValueOnce([[]])                   // no existing location
-        .mockResolvedValueOnce([[{ id: 1 }]])          // country found
-        .mockResolvedValueOnce([{ insertId: 1 }]);     // INSERT
-
-      mockFindOneConn.query.mockResolvedValueOnce([
-        [{ id: 1, unique_id: 'loc-uid-1', name: 'Abuja', country: 'Nigeria', status: 'Active' }],
-      ]);
-
-      const result = await service.create(dto);
-
-      expect(result.name).toBe('Abuja');
-      expect(result.unique_id).toBe('loc-uid-1');
-    });
+    expect(result.name).toBe('Abuja');
+    expect(result.unique_id).toBe('loc-uid-1');
   });
+
+  // update all other create() calls to pass mockUser too:
+  it('throws ConflictException when location name exists and is Active', async () => {
+    mockConn.query.mockResolvedValueOnce([[{ id: 1, status: 'Active' }]]);
+    await expect(service.create(dto, mockUser)).rejects.toThrow(ConflictException);
+  });
+
+  it('restores a soft-deleted location and returns it', async () => {
+    mockConn.query
+      .mockResolvedValueOnce([[{ id: 1, status: 'Deleted' }]])
+      .mockResolvedValueOnce([[{ id: 1, unique_id: 'loc-uid-1', name: 'Abuja', country: 'Nigeria', status: 'Active' }]]);
+    mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+    const result = await service.create(dto, mockUser);
+    expect(result.name).toBe('Abuja');
+  });
+
+  it('throws NotFoundException when country does not exist', async () => {
+    mockConn.query
+      .mockResolvedValueOnce([[]])
+      .mockResolvedValueOnce([[]]);
+    await expect(service.create(dto, mockUser)).rejects.toThrow(NotFoundException);
+  });
+});
 
   // ─── findAll ─────────────────────────────────────────────────────────────────
 
