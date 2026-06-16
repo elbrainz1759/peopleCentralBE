@@ -93,10 +93,11 @@ export class DepartmentsService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
+      // departments.service.ts — findAll
       let whereClause = "WHERE status = 'Active'";
 
       if (query.search) {
-        whereClause = ' AND (name LIKE ? OR unique_id LIKE ?)';
+        whereClause += ' AND (name LIKE ? OR unique_id LIKE ?)';
         const term = `%${query.search}%`;
         params.push(term, term);
       }
