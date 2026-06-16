@@ -51,6 +51,13 @@ describe('AuthService', () => {
     );
   });
 
+  // ─── register ────────────────────────────────────────────────────────────────
+  // Service flow:
+  //   1. role query  (outside try)
+  //   2. employee query (inside try)
+  //   3. user-exists query
+  //   4. INSERT
+
   describe('register', () => {
     it('throws BadRequestException when email or password is missing', async () => {
       await expect(service.register('', '', 'User')).rejects.toThrow(
@@ -59,16 +66,42 @@ describe('AuthService', () => {
     });
 
     it('throws BadRequestException for invalid role', async () => {
+      mockPool.query.mockResolvedValueOnce([[]]); // role query → not found
+
       await expect(
         service.register('user@test.com', 'password', 'InvalidRole'),
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('throws BadRequestException when employee does not exist', async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'User' }]]) // role found
+        .mockResolvedValueOnce([[]]); // employee not found
+
+      await expect(
+        service.register('user@mercycorps.org', 'password', 'User'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when email already exists', async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'User' }]])  // role found
+        .mockResolvedValueOnce([[{ id: 1 }]])          // employee found
+        .mockResolvedValueOnce([[{ id: 2 }]]);         // user already exists
+
+      await expect(
+        service.register('user@mercycorps.org', 'password', 'User'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('registers user successfully', async () => {
-      mockPool.query.mockResolvedValueOnce([[{ id: 1 }]]); // employee exists
-      mockPool.query.mockResolvedValueOnce([[]]); // user does not exist
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'User' }]])   // role found
+        .mockResolvedValueOnce([[{ id: 1 }]])           // employee found
+        .mockResolvedValueOnce([[]])                    // user does not exist
+        .mockResolvedValueOnce([{ insertId: 1 }]);      // INSERT
+
       (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
-      mockPool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
       const result = await service.register(
         'user@mercycorps.org',
@@ -78,26 +111,11 @@ describe('AuthService', () => {
 
       expect(result.message).toBe('User registered successfully');
       expect(result.unique_id).toBeDefined();
-      expect(mockPool.query).toHaveBeenCalledTimes(3);
-    });
-
-    it('throws BadRequestException when employee does not exist', async () => {
-      mockPool.query.mockResolvedValueOnce([[]]);
-
-      await expect(
-        service.register('user@mercycorps.org', 'password', 'User'),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('throws BadRequestException when email already exists', async () => {
-      mockPool.query.mockResolvedValueOnce([[{ id: 1 }]]);
-      mockPool.query.mockResolvedValueOnce([[{ id: 2 }]]);
-
-      await expect(
-        service.register('user@mercycorps.org', 'password', 'User'),
-      ).rejects.toThrow(BadRequestException);
+      expect(mockPool.query).toHaveBeenCalledTimes(4);
     });
   });
+
+  // ─── approveUser ─────────────────────────────────────────────────────────────
 
   describe('approveUser', () => {
     it('throws BadRequestException when required fields are missing', async () => {
@@ -107,7 +125,7 @@ describe('AuthService', () => {
     });
 
     it('throws BadRequestException when role is invalid', async () => {
-      mockPool.query.mockResolvedValueOnce([[]]);
+      mockPool.query.mockResolvedValueOnce([[]]); // role not found
 
       await expect(
         service.approveUser('user@mercycorps.org', 'User', 'boss@mercycorps.org'),
@@ -115,8 +133,9 @@ describe('AuthService', () => {
     });
 
     it('throws BadRequestException when supervisor is invalid', async () => {
-      mockPool.query.mockResolvedValueOnce([[{ name: 'User' }]]);
-      mockPool.query.mockResolvedValueOnce([[]]);
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'User' }]]) // role found
+        .mockResolvedValueOnce([[]]); // supervisor not found
 
       await expect(
         service.approveUser('user@mercycorps.org', 'User', 'boss@mercycorps.org'),
@@ -124,14 +143,18 @@ describe('AuthService', () => {
     });
 
     it('approves user successfully', async () => {
-      mockPool.query.mockResolvedValueOnce([[{ name: 'User' }]]);
-      mockPool.query.mockResolvedValueOnce([[{ unique_id: 'sup-uid-1' }]]);
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'User' }]])           // role found
+        .mockResolvedValueOnce([[{ unique_id: 'sup-uid-1' }]]); // supervisor found
 
-      mockConnection.query.mockResolvedValueOnce([[{ id: 1 }]]); // employee
-      mockConnection.query.mockResolvedValueOnce([[]]); // user not exists
+      mockConnection.query
+        .mockResolvedValueOnce([[{ id: 1 }]])           // employee found
+        .mockResolvedValueOnce([[]])                    // user not exists
+        .mockResolvedValueOnce([{ insertId: 1 }])       // INSERT user
+        .mockResolvedValueOnce([{ affectedRows: 1 }]);  // UPDATE employee
+
       (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
-      mockConnection.query.mockResolvedValueOnce([{ insertId: 1 }]);
-      mockConnection.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
+      mockMailService.sendCaseNotification.mockResolvedValue(undefined);
 
       const result = await service.approveUser(
         'user@mercycorps.org',
@@ -148,15 +171,14 @@ describe('AuthService', () => {
     });
   });
 
+  // ─── login ───────────────────────────────────────────────────────────────────
+
   describe('login', () => {
     it('throws UnauthorizedException when user is not found', async () => {
       mockPool.query.mockResolvedValueOnce([[]]);
 
       await expect(
-        service.login('user@mercycorps.org', 'password', {
-          userAgent: 'jest',
-          ip: '127.0.0.1',
-        }),
+        service.login('user@mercycorps.org', 'password', { userAgent: 'jest', ip: '127.0.0.1' }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -165,23 +187,21 @@ describe('AuthService', () => {
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
       await expect(
-        service.login('user@mercycorps.org', 'wrong', {
-          userAgent: 'jest',
-          ip: '127.0.0.1',
-        }),
+        service.login('user@mercycorps.org', 'wrong', { userAgent: 'jest', ip: '127.0.0.1' }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
     it('logs in successfully', async () => {
-      mockPool.query.mockResolvedValueOnce([[{ ...mockUser, password: 'hash' }]]);
+      mockPool.query
+        .mockResolvedValueOnce([[{ ...mockUser, password: 'hash' }]]) // user found
+        .mockResolvedValueOnce([{ affectedRows: 1 }])                  // DELETE old session
+        .mockResolvedValueOnce([{ insertId: 1 }]);                     // INSERT new session
+
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (bcrypt.hash as jest.Mock).mockResolvedValue('refresh-token-hash');
       (jwt.sign as jest.Mock)
         .mockReturnValueOnce('access-token')
         .mockReturnValueOnce('refresh-token');
-      (bcrypt.hash as jest.Mock).mockResolvedValue('refresh-token-hash');
-
-      mockPool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
-      mockPool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
       const result = await service.login('user@mercycorps.org', 'password', {
         userAgent: 'jest',
@@ -195,6 +215,8 @@ describe('AuthService', () => {
     });
   });
 
+  // ─── refresh ─────────────────────────────────────────────────────────────────
+
   describe('refresh', () => {
     it('throws UnauthorizedException when refresh token is missing', async () => {
       await expect(service.refresh('')).rejects.toThrow(UnauthorizedException);
@@ -203,28 +225,25 @@ describe('AuthService', () => {
     it('refreshes token successfully', async () => {
       (jwt.verify as jest.Mock).mockReturnValue(mockUser);
 
-      mockPool.query.mockResolvedValueOnce([
-        [
-          {
+      mockPool.query
+        .mockResolvedValueOnce([
+          [{
             id: 1,
             user_id: mockUser.unique_id,
             refresh_token_hash: 'old-hash',
             user_agent: 'jest',
             ip_address: '127.0.0.1',
             is_revoked: 'No',
-          },
-        ],
-      ]);
+          }],
+        ])                                             // sessions
+        .mockResolvedValueOnce([{ affectedRows: 1 }]) // DELETE old session
+        .mockResolvedValueOnce([{ insertId: 1 }]);    // INSERT new session
 
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
-      mockPool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
-
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new-refresh-hash');
       (jwt.sign as jest.Mock)
         .mockReturnValueOnce('new-refresh-token')
         .mockReturnValueOnce('new-access-token');
-
-      (bcrypt.hash as jest.Mock).mockResolvedValue('new-refresh-hash');
-      mockPool.query.mockResolvedValueOnce([{ insertId: 1 }]);
 
       const result = await service.refresh('old-refresh-token');
 
@@ -236,17 +255,18 @@ describe('AuthService', () => {
 
     it('throws UnauthorizedException when token reuse is detected', async () => {
       (jwt.verify as jest.Mock).mockReturnValue(mockUser);
-      mockPool.query.mockResolvedValueOnce([
-        [{ id: 1, refresh_token_hash: 'old-hash' }],
-      ]);
-      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-      mockPool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
-      await expect(service.refresh('bad-token')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      mockPool.query
+        .mockResolvedValueOnce([[{ id: 1, refresh_token_hash: 'old-hash', is_revoked: 'No' }]]) // sessions
+        .mockResolvedValueOnce([{ affectedRows: 1 }]); // DELETE on reuse detection
+
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(service.refresh('bad-token')).rejects.toThrow(UnauthorizedException);
     });
   });
+
+  // ─── logout ──────────────────────────────────────────────────────────────────
 
   describe('logout', () => {
     it('throws UnauthorizedException when refresh token is missing', async () => {
@@ -256,41 +276,28 @@ describe('AuthService', () => {
     it('logs out successfully', async () => {
       (jwt.verify as jest.Mock).mockReturnValue(mockUser);
 
-      mockPool.query.mockResolvedValueOnce([
-        [
-          {
-            id: 1,
-            user_id: mockUser.unique_id,
-            refresh_token_hash: 'hash',
-            is_revoked: 'No',
-          },
-        ],
-      ]);
+      mockPool.query
+        .mockResolvedValueOnce([[{ id: 1, refresh_token_hash: 'hash', is_revoked: 'No' }]]) // sessions
+        .mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE is_revoked
 
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
-      mockPool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
       const result = await service.logout('refresh-token');
 
-      expect(result).toEqual({
-        message: 'Logged out from this device successfully',
-      });
+      expect(result).toEqual({ message: 'Logged out from this device successfully' });
     });
 
     it('throws UnauthorizedException when session does not match', async () => {
       (jwt.verify as jest.Mock).mockReturnValue(mockUser);
 
-      mockPool.query.mockResolvedValueOnce([
-        [{ id: 1, refresh_token_hash: 'hash' }],
-      ]);
-
+      mockPool.query.mockResolvedValueOnce([[{ id: 1, refresh_token_hash: 'hash', is_revoked: 'No' }]]);
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
-      await expect(service.logout('refresh-token')).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(service.logout('refresh-token')).rejects.toThrow(UnauthorizedException);
     });
   });
+
+  // ─── requestReset ────────────────────────────────────────────────────────────
 
   describe('requestReset', () => {
     it('generates reset token', async () => {
@@ -303,6 +310,8 @@ describe('AuthService', () => {
     });
   });
 
+  // ─── resetPassword ───────────────────────────────────────────────────────────
+
   describe('resetPassword', () => {
     it('throws BadRequestException when user is not found', async () => {
       mockPool.query.mockResolvedValueOnce([[]]);
@@ -313,18 +322,15 @@ describe('AuthService', () => {
     });
 
     it('resets password successfully', async () => {
-      mockPool.query.mockResolvedValueOnce([[{ id: 1 }]]);
+      mockPool.query
+        .mockResolvedValueOnce([[{ id: 1 }]])          // user found with passChanged=0
+        .mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE
+
       (bcrypt.hash as jest.Mock).mockResolvedValue('new-hash');
-      mockPool.query.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
-      const result = await service.resetPassword(
-        mockUser as any,
-        'new-password',
-      );
+      const result = await service.resetPassword(mockUser as any, 'new-password');
 
-      expect(result).toEqual({
-        message: 'Password reset successful',
-      });
+      expect(result).toEqual({ message: 'Password reset successful' });
     });
   });
 });
