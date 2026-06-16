@@ -102,7 +102,7 @@ export class LocationsService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = 'WHERE status = "Active"';
+      let whereClause = 'WHERE a.status = "Active"';
 
       if (query.search) {
         whereClause += ' AND (name LIKE ? OR unique_id LIKE ?)';
@@ -121,7 +121,7 @@ export class LocationsService {
         `SELECT a.*, b.name AS country FROM locations a
          LEFT JOIN countries b ON a.country = b.unique_id
          ${whereClause}
-         ORDER BY created_at DESC
+         ORDER BY a.created_at DESC
          LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
