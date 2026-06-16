@@ -7,7 +7,6 @@ import {
   Param,
   Body,
   Query,
-  ParseIntPipe,
   HttpCode,
   HttpStatus,
   Req,
@@ -45,23 +44,20 @@ export class LeaveTypesController {
 
   // GET /leave-types/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.leaveTypesService.findOne(id);
   }
 
   // PATCH /leave-types/:id
   @Patch(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateLeaveTypeDto,
-  ) {
+  update(@Param('id') id: string, @Body() dto: UpdateLeaveTypeDto) {
     return this.leaveTypesService.update(id, dto);
   }
 
   // DELETE /leave-types/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.leaveTypesService.remove(id);
   }
 }

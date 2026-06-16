@@ -46,9 +46,25 @@ export class LeaveTypesService {
         [dto.name],
       );
       if (existing.length > 0) {
-        throw new ConflictException(
-          `Leave type with name "${dto.name}" already exists`,
-        );
+        //check if status is Deleted, change status to Active and update the leave type
+        if (existing[0].status === 'Deleted') {
+          await conn.execute(
+            'UPDATE leave_types SET name = ?, description = ?, country = ?, require_document = ?, trigger_value = ?, status = "Active" WHERE name = ?',
+            [
+              dto.name,
+              dto.description,
+              dto.country,
+              dto.requireDocument,
+              dto.trigger,
+              dto.name,
+            ],
+          );
+          return this.findOne(existing[0].unique_id as string);
+        } else {
+          throw new ConflictException(
+            `Leave type with name "${dto.name}" already exists`,
+          );
+        }
       }
 
       const unique_id = randomBytes(16).toString('hex');
@@ -56,7 +72,7 @@ export class LeaveTypesService {
       const require_document = dto.requireDocument ?? 'No';
       const trigger_value = dto.trigger ?? 0;
 
-      const [result] = await conn.query<mysql.ResultSetHeader>(
+      await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leave_types
            (unique_id, name, description, country, require_document, trigger_value, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -71,7 +87,7 @@ export class LeaveTypesService {
         ],
       );
 
-      return this.findOne(result.insertId);
+      return this.findOne(unique_id);
     } catch (err) {
       if (err instanceof ConflictException) throw err;
       throw new InternalServerErrorException(err);
@@ -120,11 +136,11 @@ export class LeaveTypesService {
     }
   }
 
-  async findOne(id: number): Promise<LeaveType> {
+  async findOne(id: string): Promise<LeaveType> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM leave_types WHERE id = ?',
+        'SELECT * FROM leave_types WHERE unique_id = ?',
         [id],
       );
       if (!rows.length)
@@ -159,11 +175,11 @@ export class LeaveTypesService {
     }
   }
 
-  async update(id: number, dto: UpdateLeaveTypeDto): Promise<LeaveType> {
+  async update(id: string, dto: UpdateLeaveTypeDto): Promise<LeaveType> {
     const conn = await this.pool.getConnection();
     try {
       const [findLeaveType] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM leave_types WHERE id = ?',
+        'SELECT id FROM leave_types WHERE unique_id = ?',
         [id],
       );
       if (!findLeaveType.length) {
@@ -186,10 +202,10 @@ export class LeaveTypesService {
       const setClauses = dtoKeys.map((k) => `${fieldMap[k]} = ?`).join(', ');
       const values = dtoKeys.map((k) => dto[k]);
 
-      await conn.execute(`UPDATE leave_types SET ${setClauses} WHERE id = ?`, [
-        ...values,
-        id,
-      ]);
+      await conn.execute(
+        `UPDATE leave_types SET ${setClauses} WHERE unique_id = ?`,
+        [...values, id],
+      );
 
       return this.findOne(id);
     } catch (err) {
@@ -200,18 +216,21 @@ export class LeaveTypesService {
     }
   }
 
-  async remove(id: number): Promise<{ message: string }> {
+  async remove(id: string): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
       const [findLeaveType] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM leave_types WHERE id = ?',
+        'SELECT id FROM leave_types WHERE unique_id = ?',
         [id],
       );
       if (!findLeaveType.length) {
         throw new NotFoundException(`Leave type with id ${id} not found`);
       }
 
-      await conn.execute('DELETE FROM leave_types WHERE id = ?', [id]);
+      await conn.execute(
+        'UPDATE leave_types SET status="Deleted" WHERE unique_id = ?',
+        [id],
+      );
       return { message: `Leave type ${id} deleted successfully` };
     } catch (err) {
       if (err instanceof NotFoundException) throw err;

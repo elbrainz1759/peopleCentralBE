@@ -55,7 +55,7 @@ export class RolesService {
             'UPDATE roles SET name = ?, description = ?, status = "Active" WHERE name = ?',
             [dto.name, dto.description, dto.name],
           );
-          return this.findOne(existing[0].unique_id);
+          return this.findOne(existing[0].unique_id as string);
         } else {
           throw new ConflictException(
             `Role with name "${dto.name}" already exists`,

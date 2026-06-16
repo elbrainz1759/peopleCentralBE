@@ -59,7 +59,7 @@ export class ProgramsService {
             'UPDATE programs SET name = ?, start_date = ?, end_date = ?, status = "Active" WHERE fund_code = ?',
             [dto.name, dto.startDate, dto.endDate, dto.fundCode],
           );
-          return this.findOne(existing[0].unique_id);
+          return this.findOne(existing[0].unique_id as string);
         } else {
           throw new ConflictException(
             `Program with fund_code "${dto.fundCode}" already exists`,
