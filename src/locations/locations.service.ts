@@ -199,6 +199,12 @@ export class LocationsService {
         );
       }
 
+      //change countryId to country for db column name
+      if (dto.countryId) {
+        dto['country'] = dto.countryId;
+        delete dto.countryId;
+      }
+
       const fields = (Object.keys(dto) as (keyof UpdateLocationDto)[]).filter(
         (f) => dto[f] !== undefined,
       );

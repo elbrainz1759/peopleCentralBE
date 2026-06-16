@@ -7,5 +7,5 @@ export class UpdateLocationDto {
 
   @IsString()
   @IsNotEmpty()
-  countryId: string;
+  countryId?: string;
 }
