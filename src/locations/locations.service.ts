@@ -102,27 +102,26 @@ export class LocationsService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = 'WHERE a.status = "Active"';
+
+      const baseWhere = "WHERE a.status = 'Active'";
+      const countWhere = "WHERE status = 'Active'";
 
       if (query.search) {
-        whereClause += ' AND (name LIKE ? OR unique_id LIKE ?)';
         const term = `%${query.search}%`;
         params.push(term, term);
       }
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM locations ${whereClause}`,
+        `SELECT COUNT(*) AS total FROM locations ${countWhere}${query.search ? ' AND (name LIKE ? OR unique_id LIKE ?)' : ''}`,
         params,
       );
-
       const total = countRow['total'] as number;
-
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT a.*, b.name AS country FROM locations a
-         LEFT JOIN countries b ON a.country = b.unique_id
-         ${whereClause}
-         ORDER BY a.created_at DESC
-         LIMIT ? OFFSET ?`,
+   LEFT JOIN countries b ON a.country = b.unique_id
+   ${baseWhere}${query.search ? ' AND (a.name LIKE ? OR a.unique_id LIKE ?)' : ''}
+   ORDER BY a.created_at DESC
+   LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
 
