@@ -1,252 +1,144 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { DepartmentsController } from './departments.controller';
 import { DepartmentsService } from './departments.service';
+import { CreateDepartmentDto } from './dto/create-department.dto';
+import { UpdateDepartmentDto } from './dto/update-department.dto';
+import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
-describe('DepartmentsService', () => {
+describe('DepartmentsController', () => {
+  let controller: DepartmentsController;
   let service: DepartmentsService;
 
-  const mockPool: any = { getConnection: jest.fn() };
-
-  const mockConn: any = {
-    query: jest.fn(),
-    execute: jest.fn(),
-    release: jest.fn(),
-  };
-
-  const mockFindOneConn: any = {
-    query: jest.fn(),
-    execute: jest.fn(),
-    release: jest.fn(),
+  const mockDepartmentsService = {
+    create: jest.fn(),
+    findAll: jest.fn(),
+    findByUniqueId: jest.fn(),
+    findOne: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn(),
   };
 
   const mockUser: RequestUser = {
     id: 1,
-    email: 'admin@example.com',
+    email: 'john@example.com',
     role: 'Admin',
     unique_id: 'abc123',
-    first_name: 'Admin',
-    last_name: 'User',
+    first_name: 'John',
+    last_name: 'Doe',
   };
 
-  beforeEach(() => {
-    jest.resetAllMocks();
-    mockPool.getConnection.mockResolvedValue(mockConn);
-    service = new DepartmentsService(mockPool as any);
+  const mockRequest = { user: mockUser };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [DepartmentsController],
+      providers: [{ provide: DepartmentsService, useValue: mockDepartmentsService }],
+    }).compile();
+
+    controller = module.get<DepartmentsController>(DepartmentsController);
+    service = module.get<DepartmentsService>(DepartmentsService);
   });
 
   it('should be defined', () => {
-    expect(service).toBeDefined();
+    expect(controller).toBeDefined();
   });
 
   // ─── create ──────────────────────────────────────────────────────────────────
 
   describe('create', () => {
-    it('throws ConflictException when department exists and is Active', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ id: 1, status: 'Active' }]]);
+    it('calls service.create with dto and user extracted from req', async () => {
+      const dto: CreateDepartmentDto = { name: 'Engineering' } as any;
+      const expected = { id: 1, unique_id: 'dept-uid-1', name: 'Engineering', created_by: mockUser.email };
 
-      await expect(service.create({ name: 'Engineering' } as any, mockUser)).rejects.toThrow(
-        ConflictException,
-      );
-    });
+      mockDepartmentsService.create.mockResolvedValue(expected);
 
-    it('restores a soft-deleted department and returns it', async () => {
-      mockConn.query
-        .mockResolvedValueOnce([[{ id: 1, status: 'Deleted' }]])  // name lookup → Deleted
-        .mockResolvedValueOnce([[{ id: 1, unique_id: 'dept-uid-1', name: 'Engineering', status: 'Active' }]]); // SELECT after UPDATE
+      const result = await controller.create(dto, mockRequest as any);
 
-      mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
-
-      const result = await service.create({ name: 'Engineering' } as any, mockUser);
-
-      expect(mockConn.execute).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE departments SET'),
-        ['Engineering', 'Engineering'],
-      );
-      expect(result.name).toBe('Engineering');
-    });
-
-    it('creates a new department and returns it', async () => {
-      mockPool.getConnection
-        .mockResolvedValueOnce(mockConn)
-        .mockResolvedValueOnce(mockFindOneConn);
-
-      mockConn.query
-        .mockResolvedValueOnce([[]])               // no existing dept
-        .mockResolvedValueOnce([{ insertId: 1 }]); // INSERT
-
-      mockFindOneConn.query.mockResolvedValueOnce([
-        [{ id: 1, unique_id: 'dept-uid-1', name: 'Engineering', created_by: mockUser.email, status: 'Active' }],
-      ]);
-
-      const result = await service.create({ name: 'Engineering' } as any, mockUser);
-
-      expect(result.name).toBe('Engineering');
-      expect(result.created_by).toBe(mockUser.email);
-      expect(mockConn.query).toHaveBeenNthCalledWith(
-        2,
-        expect.stringContaining('INSERT INTO departments'),
-        expect.arrayContaining([mockUser.email, 'Active']),
-      );
+      expect(result).toEqual(expected);
+      expect(service.create).toHaveBeenCalledWith(dto, mockUser);
     });
   });
 
   // ─── findAll ─────────────────────────────────────────────────────────────────
 
   describe('findAll', () => {
-    it('returns paginated departments without search', async () => {
-      const rows = [{ id: 1, name: 'Engineering' }];
+    it('calls service.findAll with query and returns paginated result', async () => {
+      const query: PaginationQueryDto = { page: 1, limit: 10, search: 'Eng' } as any;
+      const expected = {
+        data: [{ id: 1, name: 'Engineering' }],
+        meta: { total: 1, page: 1, limit: 10, last_page: 1 },
+      };
 
-      mockConn.query
-        .mockResolvedValueOnce([[{ total: 1 }]])
-        .mockResolvedValueOnce([rows]);
+      mockDepartmentsService.findAll.mockResolvedValue(expected);
 
-      const result = await service.findAll({ page: 1, limit: 10 } as any);
+      const result = await controller.findAll(query);
 
-      expect(result.data).toEqual(rows);
-      expect(result.meta).toEqual({ total: 1, page: 1, limit: 10, last_page: 1 });
-    });
-
-    it('returns paginated departments with search term', async () => {
-      const rows = [{ id: 1, name: 'Engineering' }];
-
-      mockConn.query
-        .mockResolvedValueOnce([[{ total: 1 }]])
-        .mockResolvedValueOnce([rows]);
-
-      const result = await service.findAll({ page: 1, limit: 10, search: 'Eng' } as any);
-
-      expect(result.data).toEqual(rows);
-      expect(mockConn.query).toHaveBeenNthCalledWith(
-        1,
-        expect.stringContaining('WHERE'),
-        ['%Eng%', '%Eng%'],
-      );
-    });
-
-    it('applies default page and limit when omitted', async () => {
-      mockConn.query
-        .mockResolvedValueOnce([[{ total: 0 }]])
-        .mockResolvedValueOnce([[]]);
-
-      const result = await service.findAll({} as any);
-
-      expect(result.meta.page).toBe(1);
-      expect(result.meta.limit).toBe(10);
-    });
-  });
-
-  // ─── findOne ─────────────────────────────────────────────────────────────────
-
-  describe('findOne', () => {
-    it('returns department when found', async () => {
-      const dept = { id: 1, unique_id: 'dept-uid-1', name: 'Engineering' };
-
-      mockConn.query.mockResolvedValueOnce([[dept]]);
-
-      const result = await service.findOne('dept-uid-1');
-
-      expect(result).toEqual(dept);
-      expect(mockConn.query).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE unique_id = ?'),
-        ['dept-uid-1'],
-      );
-    });
-
-    it('throws NotFoundException when not found', async () => {
-      mockConn.query.mockResolvedValueOnce([[]]);
-
-      await expect(service.findOne('uid-missing')).rejects.toThrow(NotFoundException);
+      expect(result).toEqual(expected);
+      expect(service.findAll).toHaveBeenCalledWith(query);
     });
   });
 
   // ─── findByUniqueId ──────────────────────────────────────────────────────────
 
   describe('findByUniqueId', () => {
-    it('returns department by unique_id', async () => {
-      const dept = { id: 1, unique_id: 'dept-uid-1', name: 'Engineering' };
+    it('calls service.findByUniqueId with uniqueId string and returns department', async () => {
+      const expected = { id: 1, unique_id: 'dept-uid-1', name: 'Engineering' };
 
-      mockConn.query.mockResolvedValueOnce([[dept]]);
+      mockDepartmentsService.findByUniqueId.mockResolvedValue(expected);
 
-      const result = await service.findByUniqueId('dept-uid-1');
+      const result = await controller.findByUniqueId('dept-uid-1');
 
-      expect(result).toEqual(dept);
+      expect(result).toEqual(expected);
+      expect(service.findByUniqueId).toHaveBeenCalledWith('dept-uid-1');
     });
+  });
 
-    it('throws NotFoundException when not found', async () => {
-      mockConn.query.mockResolvedValueOnce([[]]);
+  // ─── findOne ─────────────────────────────────────────────────────────────────
 
-      await expect(service.findByUniqueId('uid-missing')).rejects.toThrow(NotFoundException);
+  describe('findOne', () => {
+    it('calls service.findOne with id string and returns department', async () => {
+      const expected = { id: 1, unique_id: 'dept-uid-1', name: 'Engineering' };
+
+      mockDepartmentsService.findOne.mockResolvedValue(expected);
+
+      const result = await controller.findOne('dept-uid-1');
+
+      expect(result).toEqual(expected);
+      expect(service.findOne).toHaveBeenCalledWith('dept-uid-1');
     });
   });
 
   // ─── update ──────────────────────────────────────────────────────────────────
 
   describe('update', () => {
-    it('throws NotFoundException when department not found', async () => {
-      mockConn.query.mockResolvedValueOnce([[]]);
+    it('calls service.update with id string and dto, returns updated department', async () => {
+      const dto: UpdateDepartmentDto = { name: 'HR' } as any;
+      const expected = { id: 1, unique_id: 'dept-uid-1', name: 'HR' };
 
-      await expect(service.update('uid-missing', { name: 'HR' } as any)).rejects.toThrow(
-        NotFoundException,
-      );
-    });
+      mockDepartmentsService.update.mockResolvedValue(expected);
 
-    it('returns existing department unchanged when dto is empty', async () => {
-      mockPool.getConnection
-        .mockResolvedValueOnce(mockConn)
-        .mockResolvedValueOnce(mockFindOneConn);
+      const result = await controller.update('dept-uid-1', dto);
 
-      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'dept-uid-1' }]]);
-      mockFindOneConn.query.mockResolvedValueOnce([
-        [{ id: 1, unique_id: 'dept-uid-1', name: 'Engineering' }],
-      ]);
-
-      const result = await service.update('dept-uid-1', {} as any);
-
-      expect(result.name).toBe('Engineering');
-      expect(mockConn.execute).not.toHaveBeenCalled();
-    });
-
-    it('updates department fields and returns updated department', async () => {
-      mockPool.getConnection
-        .mockResolvedValueOnce(mockConn)
-        .mockResolvedValueOnce(mockFindOneConn);
-
-      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'dept-uid-1' }]]);
-      mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
-      mockFindOneConn.query.mockResolvedValueOnce([
-        [{ id: 1, unique_id: 'dept-uid-1', name: 'HR' }],
-      ]);
-
-      const result = await service.update('dept-uid-1', { name: 'HR' } as any);
-
-      expect(result.name).toBe('HR');
-      expect(mockConn.execute).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE departments SET'),
-        expect.arrayContaining(['HR', 'dept-uid-1']),
-      );
+      expect(result).toEqual(expected);
+      expect(service.update).toHaveBeenCalledWith('dept-uid-1', dto);
     });
   });
 
   // ─── remove ──────────────────────────────────────────────────────────────────
 
   describe('remove', () => {
-    it('throws NotFoundException when department not found', async () => {
-      mockConn.query.mockResolvedValueOnce([[]]);
+    it('calls service.remove with id string and returns confirmation', async () => {
+      const expected = { message: 'Department dept-uid-1 deleted successfully' };
 
-      await expect(service.remove('uid-missing')).rejects.toThrow(NotFoundException);
-    });
+      mockDepartmentsService.remove.mockResolvedValue(expected);
 
-    it('soft-deletes department and returns confirmation message', async () => {
-      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'dept-uid-1' }]]);
-      mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
+      const result = await controller.remove('dept-uid-1');
 
-      const result = await service.remove('dept-uid-1');
-
-      expect(result).toEqual({ message: 'Department dept-uid-1 deleted successfully' });
-      expect(mockConn.execute).toHaveBeenCalledWith(
-        'UPDATE departments SET status = "Deleted" WHERE unique_id = ?',
-        ['dept-uid-1'],
-      );
+      expect(result).toEqual(expected);
+      expect(service.remove).toHaveBeenCalledWith('dept-uid-1');
     });
   });
 });
