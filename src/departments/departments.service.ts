@@ -48,20 +48,32 @@ export class DepartmentsService {
         [dto.name],
       );
       if (existing.length > 0) {
-        throw new ConflictException(
-          `Department with name "${dto.name}" already exists`,
-        );
+        //if status is Deleted, change status to Active and update the department
+        if (existing[0].status === 'Deleted') {
+          await conn.execute(
+            'UPDATE departments SET name = ?, status = "Active" WHERE name = ?',
+            [dto.name, dto.name],
+          );
+          const [updated] = await conn.query<mysql.RowDataPacket[]>(
+            'SELECT * FROM departments WHERE name = ?',
+            [dto.name],
+          );
+          return updated[0] as Department;
+        } else {
+          throw new ConflictException(
+            `Department with name "${dto.name}" already exists`,
+          );
+        }
       }
-
       const unique_id: string = randomBytes(16).toString('hex');
 
-      const [result] = await conn.query<mysql.ResultSetHeader>(
+      await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO departments (unique_id, name, created_by, status)
          VALUES (?, ?, ?, ?)`,
         [unique_id, dto.name, user.email, 'Active'],
       );
 
-      return this.findOne(result.insertId);
+      return this.findOne(unique_id);
     } catch (err) {
       if (err instanceof ConflictException) throw err;
       throw new InternalServerErrorException(err);
@@ -120,11 +132,11 @@ export class DepartmentsService {
   }
 
   // GET /departments/:id
-  async findOne(id: number): Promise<Department> {
+  async findOne(id: string): Promise<Department> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM departments WHERE id = ?',
+        'SELECT * FROM departments WHERE unique_id = ?',
         [id],
       );
       if (!rows.length)
@@ -161,15 +173,17 @@ export class DepartmentsService {
   }
 
   // PATCH /departments/:id
-  async update(id: number, dto: UpdateDepartmentDto): Promise<Department> {
+  async update(id: string, dto: UpdateDepartmentDto): Promise<Department> {
     const conn = await this.pool.getConnection();
     try {
       const [findDepartment] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM departments WHERE id = ?',
+        'SELECT unique_id FROM departments WHERE unique_id = ?',
         [id],
       );
       if (!findDepartment.length) {
-        throw new NotFoundException(`Department with id ${id} not found`);
+        throw new NotFoundException(
+          `Department with unique_id ${id} not found`,
+        );
       }
 
       const fields = (Object.keys(dto) as (keyof UpdateDepartmentDto)[]).filter(
@@ -180,10 +194,10 @@ export class DepartmentsService {
       const setClauses = fields.map((f) => `${f} = ?`).join(', ');
       const values = fields.map((f) => dto[f]);
 
-      await conn.execute(`UPDATE departments SET ${setClauses} WHERE id = ?`, [
-        ...values,
-        id,
-      ]);
+      await conn.execute(
+        `UPDATE departments SET ${setClauses} WHERE unique_id = ?`,
+        [...values, id],
+      );
 
       return this.findOne(id);
     } catch (err) {
@@ -209,11 +223,11 @@ export class DepartmentsService {
       }
 
       await conn.execute(
-        'UPDATE departments SET status = "Inactive" WHERE unique_id = ?',
+        'UPDATE departments SET status = "Deleted" WHERE unique_id = ?',
         [id],
       );
 
-      return { message: `Department ${id} deactivated successfully` };
+      return { message: `Department ${id} deleted successfully` };
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
