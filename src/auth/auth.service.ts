@@ -68,8 +68,11 @@ export class AuthService {
     }
 
     // validating role
-
-    if (!['User', 'Admin', 'Superadmin'].includes(role)) {
+    const [roleRows] = await this.pool.query<UserRow[]>(
+      'SELECT name FROM roles WHERE name = ?',
+      [role],
+    );
+    if (roleRows.length === 0) {
       throw new BadRequestException('Invalid role');
     }
     try {

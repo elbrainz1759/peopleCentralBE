@@ -54,7 +54,7 @@ export class CheckListItemsService {
             'UPDATE check_list_items SET name = ?, department = ?, status = "Active" WHERE name = ? AND department = ?',
             [dto.name, dto.departmentId, dto.name, dto.departmentId],
           );
-          return this.findOne(existing[0].unique_id);
+          return this.findOne(existing[0].unique_id as string);
         } else {
           throw new ConflictException(
             `Check list item with name "${dto.name}" already exists in this department`,

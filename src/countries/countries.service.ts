@@ -49,7 +49,7 @@ export class CountriesService {
           'UPDATE countries SET status = "Active" WHERE unique_id = ?',
           [existing[0].unique_id],
         );
-        return this.findOne(existing[0].unique_id);
+        return this.findOne(existing[0].unique_id as string);
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
