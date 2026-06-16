@@ -93,18 +93,18 @@ export class UsersService {
     const role: string | undefined = dto.role;
     const password: string | undefined = dto.password;
 
-    //check if role exists and is valid
-    const [validRoles] = await this.pool.query<[]>(
-      'SELECT name FROM roles WHERE name = ?',
-      [role],
-    );
-    if (role !== undefined && validRoles.length === 0) {
-      throw new BadRequestException('Invalid role specified');
-    }
     const fields: string[] = [];
     const values: (string | number)[] = [];
 
     if (role !== undefined) {
+      // ← role query is now inside the guard
+      const [validRoles] = await this.pool.query<[]>(
+        'SELECT name FROM roles WHERE name = ?',
+        [role],
+      );
+      if (validRoles.length === 0) {
+        throw new BadRequestException('Invalid role specified');
+      }
       fields.push('role = ?');
       values.push(role);
     }
