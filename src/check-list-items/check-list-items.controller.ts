@@ -7,14 +7,16 @@ import {
   Param,
   Body,
   Query,
-  ParseIntPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { CheckListItemsService } from './check-list-items.service';
 import { CreateCheckListItemDto } from './dto/create-check-list-item.dto';
 import { UpdateCheckListItemDto } from './dto/update-check-list-item.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import type { Request } from 'express';
 
 @Controller('check-list-items')
 export class CheckListItemsController {
@@ -23,8 +25,9 @@ export class CheckListItemsController {
   // POST /check-list-items
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateCheckListItemDto) {
-    return this.checkListItemsService.create(dto);
+  create(@Body() dto: CreateCheckListItemDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.checkListItemsService.create(dto, user);
   }
 
   // GET /check-list-items?page=1&limit=10&search=keyword
@@ -41,23 +44,20 @@ export class CheckListItemsController {
 
   // GET /check-list-items/:id
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id') id: string) {
     return this.checkListItemsService.findOne(id);
   }
 
   // PATCH /check-list-items/:id
   @Patch(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateCheckListItemDto,
-  ) {
+  update(@Param('id') id: string, @Body() dto: UpdateCheckListItemDto) {
     return this.checkListItemsService.update(id, dto);
   }
 
   // DELETE /check-list-items/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@Param('id') id: string) {
     return this.checkListItemsService.remove(id);
   }
 }

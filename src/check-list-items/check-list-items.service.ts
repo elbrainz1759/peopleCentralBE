@@ -10,6 +10,7 @@ import { CreateCheckListItemDto } from './dto/create-check-list-item.dto';
 import { UpdateCheckListItemDto } from './dto/update-check-list-item.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { randomBytes } from 'crypto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 export interface CheckListItem {
   id: number;
@@ -35,7 +36,10 @@ export class CheckListItemsService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
   // POST /check-list-items
-  async create(dto: CreateCheckListItemDto): Promise<CheckListItem> {
+  async create(
+    dto: CreateCheckListItemDto,
+    user: RequestUser,
+  ): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
 
     try {
@@ -44,9 +48,18 @@ export class CheckListItemsService {
         [dto.name, dto.departmentId],
       );
       if (existing.length > 0) {
-        throw new ConflictException(
-          `Check list item with name "${dto.name}" already exists in this department`,
-        );
+        //if status is Deleted, change status to Active and update the check list item
+        if (existing[0].status === 'Deleted') {
+          await conn.execute(
+            'UPDATE check_list_items SET name = ?, department = ?, status = "Active" WHERE name = ? AND department = ?',
+            [dto.name, dto.departmentId, dto.name, dto.departmentId],
+          );
+          return this.findOne(existing[0].unique_id);
+        } else {
+          throw new ConflictException(
+            `Check list item with name "${dto.name}" already exists in this department`,
+          );
+        }
       }
 
       // check department exists
@@ -61,15 +74,15 @@ export class CheckListItemsService {
       }
 
       const unique_id: string = randomBytes(16).toString('hex');
-      const created_by: string = 'System';
+      const created_by: string = user.email;
 
-      const [result] = await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO check_list_items (unique_id, name, department, created_by)
-         VALUES (?, ?, ?, ?)`,
-        [unique_id, dto.name, dto.departmentId, created_by],
+      await conn.query<mysql.ResultSetHeader>(
+        `INSERT INTO check_list_items (unique_id, name, department, created_by, status)
+         VALUES (?, ?, ?, ?, ?)`,
+        [unique_id, dto.name, dto.departmentId, created_by, 'Active'],
       );
 
-      return this.findOne(result.insertId);
+      return this.findOne(unique_id);
     } catch (err) {
       if (err instanceof ConflictException) throw err;
       throw new InternalServerErrorException(err);
@@ -89,7 +102,11 @@ export class CheckListItemsService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
+
+      // start condition with whereClause to filter by status = 'Active'
       const conditions: string[] = [];
+
+      conditions.push('a.status = "Active"');
 
       if (query.name) {
         conditions.push('a.name LIKE ?');
@@ -138,11 +155,11 @@ export class CheckListItemsService {
   }
 
   // GET /check-list-items/:id
-  async findOne(id: number): Promise<CheckListItem> {
+  async findOne(id: string): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT * FROM check_list_items WHERE id = ?',
+        'SELECT * FROM check_list_items WHERE unique_id = ?',
         [id],
       );
       if (!rows.length)
@@ -180,19 +197,20 @@ export class CheckListItemsService {
 
   // PATCH /check-list-items/:id
   async update(
-    id: number,
+    id: string,
     dto: UpdateCheckListItemDto,
   ): Promise<CheckListItem> {
     const conn = await this.pool.getConnection();
     try {
       const [findItem] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM check_list_items WHERE id = ?',
+        'SELECT unique_id FROM check_list_items WHERE unique_id = ?',
         [id],
       );
       if (!findItem.length) {
         throw new NotFoundException(`Check list item with id ${id} not found`);
       }
 
+      //Map the DTO fields to the database columns department and name
       const fieldMap: Record<keyof UpdateCheckListItemDto, string> = {
         name: 'name',
         departmentId: 'department',
@@ -207,7 +225,7 @@ export class CheckListItemsService {
       const values = fields.map((f) => dto[f]);
 
       await conn.execute(
-        `UPDATE check_list_items SET ${setClauses} WHERE id = ?`,
+        `UPDATE check_list_items SET ${setClauses} WHERE unique_id = ?`,
         [...values, id],
       );
 
@@ -221,18 +239,21 @@ export class CheckListItemsService {
   }
 
   // DELETE /check-list-items/:id
-  async remove(id: number): Promise<{ message: string }> {
+  async remove(id: string): Promise<{ message: string }> {
     const conn = await this.pool.getConnection();
     try {
       const [findItem] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT id FROM check_list_items WHERE id = ?',
+        'SELECT unique_id FROM check_list_items WHERE unique_id = ?',
         [id],
       );
       if (!findItem.length) {
         throw new NotFoundException(`Check list item with id ${id} not found`);
       }
 
-      await conn.execute('DELETE FROM check_list_items WHERE id = ?', [id]);
+      await conn.execute(
+        'UPDATE check_list_items SET status = "Deleted" WHERE unique_id = ?',
+        [id],
+      );
 
       return { message: `Check list item ${id} deleted successfully` };
     } catch (err) {
