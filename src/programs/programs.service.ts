@@ -92,7 +92,6 @@ export class ProgramsService {
     }
   }
 
-  // GET /programs
   async findAll(query: PaginationQueryDto): Promise<PaginatedResult<Program>> {
     const conn = await this.pool.getConnection();
     try {
@@ -101,10 +100,10 @@ export class ProgramsService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = '';
+      let whereClause = "WHERE status = 'Active'";
 
       if (query.search) {
-        whereClause = 'WHERE name LIKE ? OR unique_id LIKE ?';
+        whereClause += ' AND (name LIKE ? OR unique_id LIKE ?)';
         const term = `%${query.search}%`;
         params.push(term, term);
       }
@@ -118,8 +117,8 @@ export class ProgramsService {
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT * FROM programs ${whereClause}
-         ORDER BY created_at DESC
-         LIMIT ? OFFSET ?`,
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
 
