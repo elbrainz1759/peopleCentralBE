@@ -23,6 +23,7 @@ export interface Program {
   fund_code: number;
   start_date: string;
   end_date: string;
+  country: string;
   created_by: string;
   created_at: Date;
 }
@@ -70,8 +71,8 @@ export class ProgramsService {
       const created_by: string = user.email;
 
       await conn.query<mysql.ResultSetHeader>(
-        `INSERT INTO programs (unique_id, name, fund_code, start_date, end_date, created_by, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO programs (unique_id, name, fund_code, start_date, end_date, created_by, status, country)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           unique_id,
           dto.name,
@@ -80,6 +81,7 @@ export class ProgramsService {
           dto.endDate,
           created_by,
           'Active',
+          dto.countryId,
         ],
       );
 
@@ -198,6 +200,7 @@ export class ProgramsService {
         fundCode: 'fund_code',
         startDate: 'start_date',
         endDate: 'end_date',
+        countryId: 'country',
       };
 
       const fields = Object.keys(dto) as (keyof UpdateProgramDto)[];

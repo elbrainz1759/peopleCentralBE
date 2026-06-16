@@ -1,4 +1,3 @@
-
 import {
   ConflictException,
   NotFoundException,
@@ -50,6 +49,7 @@ describe('ProgramsService', () => {
       fundCode: 12345,
       startDate: '2026-01-01',
       endDate: '2026-12-31',
+      countryId: 'country-uid-1',
     };
 
     it('throws ConflictException when fund code exists and status is Active', async () => {
@@ -75,6 +75,7 @@ describe('ProgramsService', () => {
             fund_code: 12345,
             start_date: '2026-01-01',
             end_date: '2026-12-31',
+            country: 'country-uid-1',
             created_by: mockUser.email,
             status: 'Active',
           },
@@ -97,18 +98,19 @@ describe('ProgramsService', () => {
         .mockResolvedValueOnce(mockFindOneConn);
 
       mockConn.query
-        .mockResolvedValueOnce([[]])                        // no existing fund_code
-        .mockResolvedValueOnce([{ insertId: 1 }]);          // INSERT
+        .mockResolvedValueOnce([[]])               // no existing fund_code
+        .mockResolvedValueOnce([{ insertId: 1 }]); // INSERT
 
       mockFindOneConn.query.mockResolvedValueOnce([
         [
           {
             id: 1,
-            unique_id: expect.any(String),
+            unique_id: 'uid-new',
             name: 'BEGE',
             fund_code: 12345,
             start_date: '2026-01-01',
             end_date: '2026-12-31',
+            country: 'country-uid-1',
             created_by: mockUser.email,
             status: 'Active',
           },
@@ -119,7 +121,14 @@ describe('ProgramsService', () => {
 
       expect(result.name).toBe('BEGE');
       expect(result.created_by).toBe(mockUser.email);
+      expect(result.country).toBe('country-uid-1');
       expect(mockConn.query).toHaveBeenCalledTimes(2);
+      // INSERT should include countryId
+      expect(mockConn.query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining('INSERT INTO programs'),
+        expect.arrayContaining([dto.countryId]),
+      );
     });
   });
 
@@ -152,7 +161,6 @@ describe('ProgramsService', () => {
 
       expect(result.data).toEqual(rows);
       expect(result.meta.total).toBe(1);
-      // WHERE clause should have been injected
       expect(mockConn.query).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining('WHERE'),
@@ -176,7 +184,7 @@ describe('ProgramsService', () => {
 
   describe('findOne', () => {
     it('returns program when found', async () => {
-      const program = { id: 1, unique_id: 'uid-1', name: 'BEGE' };
+      const program = { id: 1, unique_id: 'uid-1', name: 'BEGE', country: 'country-uid-1' };
 
       mockConn.query.mockResolvedValueOnce([[program]]);
 
@@ -200,7 +208,7 @@ describe('ProgramsService', () => {
 
   describe('findByUniqueId', () => {
     it('returns program by unique_id', async () => {
-      const program = { id: 1, unique_id: 'uid-1', name: 'BEGE' };
+      const program = { id: 1, unique_id: 'uid-1', name: 'BEGE', country: 'country-uid-1' };
 
       mockConn.query.mockResolvedValueOnce([[program]]);
 
@@ -234,7 +242,7 @@ describe('ProgramsService', () => {
 
       mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid-1' }]]);
       mockFindOneConn.query.mockResolvedValueOnce([
-        [{ id: 1, unique_id: 'uid-1', name: 'BEGE' }],
+        [{ id: 1, unique_id: 'uid-1', name: 'BEGE', country: 'country-uid-1' }],
       ]);
 
       const result = await service.update('uid-1', {} as any);
@@ -243,7 +251,7 @@ describe('ProgramsService', () => {
       expect(mockConn.execute).not.toHaveBeenCalled();
     });
 
-    it('updates program fields and returns updated program', async () => {
+    it('maps camelCase dto keys to snake_case db columns', async () => {
       mockPool.getConnection
         .mockResolvedValueOnce(mockConn)
         .mockResolvedValueOnce(mockFindOneConn);
@@ -251,7 +259,31 @@ describe('ProgramsService', () => {
       mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid-1' }]]);
       mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
       mockFindOneConn.query.mockResolvedValueOnce([
-        [{ id: 1, unique_id: 'uid-1', name: 'Updated BEGE', fund_code: 12345 }],
+        [{ id: 1, unique_id: 'uid-1', name: 'BEGE', fund_code: 99999, start_date: '2027-01-01', end_date: '2027-12-31', country: 'country-uid-2' }],
+      ]);
+
+      await service.update('uid-1', {
+        fundCode: 99999,
+        startDate: '2027-01-01',
+        endDate: '2027-12-31',
+        countryId: 'country-uid-2',
+      } as any);
+
+      expect(mockConn.execute).toHaveBeenCalledWith(
+        expect.stringMatching(/fund_code|start_date|end_date|country/),
+        expect.arrayContaining([99999, '2027-01-01', '2027-12-31', 'country-uid-2', 'uid-1']),
+      );
+    });
+
+    it('updates name and returns updated program', async () => {
+      mockPool.getConnection
+        .mockResolvedValueOnce(mockConn)
+        .mockResolvedValueOnce(mockFindOneConn);
+
+      mockConn.query.mockResolvedValueOnce([[{ unique_id: 'uid-1' }]]);
+      mockConn.execute.mockResolvedValueOnce([{ affectedRows: 1 }]);
+      mockFindOneConn.query.mockResolvedValueOnce([
+        [{ id: 1, unique_id: 'uid-1', name: 'Updated BEGE', fund_code: 12345, country: 'country-uid-1' }],
       ]);
 
       const result = await service.update('uid-1', { name: 'Updated BEGE' } as any);

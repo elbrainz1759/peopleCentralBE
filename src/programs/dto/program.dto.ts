@@ -11,19 +11,23 @@ import { Type } from 'class-transformer';
 export class CreateProgramDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name: string = '';
 
   @IsInt()
   @IsNotEmpty()
-  fundCode: number;
+  fundCode: number = 0;
 
   @IsDateString()
   @IsNotEmpty()
-  startDate: string;
+  startDate: string = '';
 
   @IsDateString()
   @IsNotEmpty()
-  endDate: string;
+  endDate: string = '';
+
+  @IsString()
+  @IsNotEmpty()
+  countryId: string = '';
 }
 
 export class UpdateProgramDto {
@@ -42,6 +46,10 @@ export class UpdateProgramDto {
   @IsDateString()
   @IsOptional()
   endDate?: string;
+
+  @IsString()
+  @IsOptional()
+  countryId?: string;
 }
 
 export class PaginationQueryDto {
