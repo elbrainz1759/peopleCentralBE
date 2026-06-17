@@ -26,6 +26,7 @@ export interface Program {
   country: string;
   created_by: string;
   created_at: Date;
+  country_name?: string;
 }
 
 export interface PaginatedResult<T> {
@@ -102,24 +103,30 @@ export class ProgramsService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = "WHERE status = 'Active'";
+      let whereClause = "WHERE a.status = 'Active'";
 
       if (query.search) {
-        whereClause += ' AND (name LIKE ? OR unique_id LIKE ?)';
+        whereClause += ' AND (a.name LIKE ? OR a.unique_id LIKE ?)';
         const term = `%${query.search}%`;
         params.push(term, term);
       }
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM programs ${whereClause}`,
+        `SELECT COUNT(*) AS total
+       FROM programs a
+       LEFT JOIN countries b ON a.country = b.unique_id
+       ${whereClause}`,
         params,
       );
 
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT * FROM programs ${whereClause}
-       ORDER BY created_at DESC
+        `SELECT a.*, b.name AS country_name
+       FROM programs a
+       LEFT JOIN countries b ON a.country = b.unique_id
+       ${whereClause}
+       ORDER BY a.created_at DESC
        LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
