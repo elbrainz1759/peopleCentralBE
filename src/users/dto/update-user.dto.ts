@@ -1,9 +1,8 @@
-import { IsOptional, IsString, IsIn, MinLength } from 'class-validator';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 
 export class UpdateUserDto {
   @IsOptional()
   @IsString()
-  @IsIn(['User', 'Admin', 'Superadmin'])
   role?: string;
 
   @IsOptional()
