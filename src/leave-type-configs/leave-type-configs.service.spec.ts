@@ -47,7 +47,7 @@ describe('LeaveTypeConfigsService', () => {
   describe('create', () => {
     const dto: any = {
       leaveTypeId: 'lt-uid-1',
-      country: 'country-uid-1',
+      countryId: 'country-uid-1',   // ← service checks dto.countryId
       annualHours: 160,
       monthlyAccrualHours: 13.33,
       period: 'Monthly',
@@ -57,6 +57,14 @@ describe('LeaveTypeConfigsService', () => {
       mockConn.query.mockResolvedValueOnce([[]]); // lt lookup → empty
 
       await expect(service.create(dto, mockUser)).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when countryId is missing', async () => {
+      mockConn.query.mockResolvedValueOnce([[{ id: 1 }]]); // lt found
+
+      await expect(
+        service.create({ ...dto, countryId: undefined }, mockUser),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException when country not found', async () => {
@@ -69,9 +77,9 @@ describe('LeaveTypeConfigsService', () => {
 
     it('throws ConflictException when active config already exists', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[{ id: 1 }]])                        // lt found
-        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]])   // country found
-        .mockResolvedValueOnce([[{ id: 5, status: 'Active' }]]);     // existing → Active
+        .mockResolvedValueOnce([[{ id: 1 }]])                          // lt found
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]])     // country found
+        .mockResolvedValueOnce([[{ id: 5, status: 'Active' }]]);       // existing → Active
 
       await expect(service.create(dto, mockUser)).rejects.toThrow(ConflictException);
     });
@@ -120,7 +128,7 @@ describe('LeaveTypeConfigsService', () => {
       expect(mockConn.query).toHaveBeenNthCalledWith(
         4,
         expect.stringContaining('INSERT INTO leave_type_country_config'),
-        expect.arrayContaining([dto.leaveTypeId, dto.country, dto.annualHours, 13.33, mockUser.email, 'Active', dto.period]),
+        expect.arrayContaining([dto.leaveTypeId, dto.annualHours, 13.33, mockUser.email, 'Active', dto.period]),
       );
     });
 
@@ -273,11 +281,11 @@ describe('LeaveTypeConfigsService', () => {
 
     it('throws ConflictException when new combo already exists', async () => {
       mockConn.query
-        .mockResolvedValueOnce([[{ unique_id: 'cfg-uid-1', country: 'country-uid-1', leave_type_id: 'lt-uid-1' }]])
+        .mockResolvedValueOnce([[{ unique_id: 'cfg-uid-1', country: 'country-uid-1', leave_type_id: 'lt-uid-1' }]]) // fetch
         .mockResolvedValueOnce([[{ unique_id: 'cfg-uid-other' }]]); // conflict found
 
       await expect(
-        service.update('cfg-uid-1', { country: 'country-uid-2' } as any),
+        service.update('cfg-uid-1', { countryId: 'country-uid-2' } as any), // ← countryId triggers FK check AND adds a field
       ).rejects.toThrow(ConflictException);
     });
 
