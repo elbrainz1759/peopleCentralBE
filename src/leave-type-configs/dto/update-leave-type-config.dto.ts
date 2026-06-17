@@ -14,7 +14,7 @@ export class UpdateLeaveTypeConfigDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
-  country?: string;
+  countryId?: string;
 
   @IsOptional()
   @IsNumber()

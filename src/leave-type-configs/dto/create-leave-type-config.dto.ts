@@ -12,7 +12,7 @@ export class CreateLeaveTypeConfigDto {
 
   @IsString()
   @IsNotEmpty()
-  country!: string;
+  countryId!: string;
 
   @IsNumber()
   @Min(0)

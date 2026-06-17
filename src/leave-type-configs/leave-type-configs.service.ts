@@ -55,22 +55,22 @@ export class LeaveTypeConfigsService {
       }
 
       // Verify country exists
-      if (!dto.country) {
+      if (!dto.countryId) {
         throw new BadRequestException('Country is required');
       }
       const [countryRows] = await conn.query<mysql.RowDataPacket[]>(
         'SELECT unique_id FROM countries WHERE unique_id = ?',
-        [dto.country],
+        [dto.countryId],
       );
       if (!countryRows.length) {
-        throw new BadRequestException(`Country "${dto.country}" not found`);
+        throw new BadRequestException(`Country "${dto.countryId}" not found`);
       }
 
       // Friendly conflict check before hitting the DB UNIQUE key
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT id FROM leave_type_country_config
          WHERE leave_type_id = ? AND country = ?`,
-        [dto.leaveTypeId, dto.country],
+        [dto.leaveTypeId, dto.countryId],
       );
       if (existing.length) {
         //if status is Deleted, change status to Active and update the config
@@ -83,13 +83,13 @@ export class LeaveTypeConfigsService {
               dto.annualHours,
               dto.monthlyAccrualHours ?? null,
               dto.leaveTypeId,
-              dto.country,
+              dto.countryId,
             ],
           );
           return this.findOne(existing[0].unique_id as string);
         } else {
           throw new ConflictException(
-            `A config already exists for leave type "${dto.leaveTypeId}" in country "${dto.country}"`,
+            `A config already exists for leave type "${dto.leaveTypeId}" in country "${dto.countryId}"`,
           );
         }
       }
@@ -104,7 +104,7 @@ export class LeaveTypeConfigsService {
         [
           unique_id,
           dto.leaveTypeId,
-          dto.country,
+          dto.countryId,
           dto.annualHours,
           dto.monthlyAccrualHours ?? null,
           createdBy,
@@ -246,11 +246,11 @@ export class LeaveTypeConfigsService {
       // leave_type_id is a string (unique_id), not a numeric PK
       const current = rows[0] as { country: string; leave_type_id: string };
 
-      const newCountry = dto.country ?? current.country;
+      const newCountry = dto.countryId ?? current.country;
       const newLeaveTypeId = dto.leaveTypeId ?? current.leave_type_id;
 
       // If either FK is changing, verify the new combination isn't already taken
-      if (dto.country !== undefined || dto.leaveTypeId !== undefined) {
+      if (dto.countryId !== undefined || dto.leaveTypeId !== undefined) {
         const [conflict] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT unique_id FROM leave_type_country_config
            WHERE leave_type_id = ? AND country = ? AND unique_id != ?`,
@@ -270,9 +270,9 @@ export class LeaveTypeConfigsService {
         fields.push('leave_type_id = ?');
         values.push(dto.leaveTypeId);
       }
-      if (dto.country !== undefined) {
+      if (dto.countryId !== undefined) {
         fields.push('country = ?');
-        values.push(dto.country);
+        values.push(dto.countryId);
       }
       if (dto.annualHours !== undefined) {
         fields.push('annual_hours = ?');
