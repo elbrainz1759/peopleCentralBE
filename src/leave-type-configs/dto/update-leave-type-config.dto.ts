@@ -1,5 +1,4 @@
 import {
-  IsInt,
   IsString,
   IsNotEmpty,
   IsNumber,
@@ -9,7 +8,7 @@ import {
 
 export class UpdateLeaveTypeConfigDto {
   @IsOptional()
-  @IsInt()
+  @IsString()
   leaveTypeId?: string;
 
   @IsOptional()
