@@ -22,6 +22,7 @@ export interface LeaveType {
   trigger_value: number;
   created_by: string;
   created_at: Date;
+  country_name?: string;
 }
 
 export interface PaginatedResult<T> {
@@ -45,6 +46,16 @@ export class LeaveTypesService {
         'SELECT id FROM leave_types WHERE name = ?',
         [dto.name],
       );
+
+      //check if country exists for the leave type from countries table
+      const [countryExists] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT unique_id FROM countries WHERE unique_id = ?',
+        [dto.country],
+      );
+      if (dto.country && !countryExists.length) {
+        throw new NotFoundException(`Country with id ${dto.country} not found`);
+      }
+
       if (existing.length > 0) {
         //check if status is Deleted, change status to Active and update the leave type
         if (existing[0].status === 'Deleted') {
@@ -106,22 +117,30 @@ export class LeaveTypesService {
       const offset = (page - 1) * limit;
 
       const params: (string | number)[] = [];
-      let whereClause = '';
+      let whereClause = "WHERE a.status = 'Active'";
 
       if (query.search) {
-        whereClause = 'WHERE name LIKE ? OR unique_id LIKE ?';
+        whereClause += ' AND (a.name LIKE ? OR a.unique_id LIKE ?)';
         const term = `%${query.search}%`;
         params.push(term, term);
       }
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM leave_types ${whereClause}`,
+        `SELECT COUNT(*) AS total
+       FROM leave_types a
+       LEFT JOIN countries b ON a.country = b.unique_id
+       ${whereClause}`,
         params,
       );
       const total = countRow['total'] as number;
 
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT * FROM leave_types ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+        `SELECT a.*, b.name AS country_name
+       FROM leave_types a
+       LEFT JOIN countries b ON a.country = b.unique_id
+       ${whereClause}
+       ORDER BY a.created_at DESC
+       LIMIT ? OFFSET ?`,
         [...params, limit, offset],
       );
 
@@ -184,6 +203,19 @@ export class LeaveTypesService {
       );
       if (!findLeaveType.length) {
         throw new NotFoundException(`Leave type with id ${id} not found`);
+      }
+
+      //check if country exists for the leave type from countries table
+      if (dto.country) {
+        const [countryExists] = await conn.query<mysql.RowDataPacket[]>(
+          'SELECT unique_id FROM countries WHERE unique_id = ?',
+          [dto.country],
+        );
+        if (!countryExists.length) {
+          throw new NotFoundException(
+            `Country with id ${dto.country} not found`,
+          );
+        }
       }
 
       const fieldMap: Record<string, string> = {
