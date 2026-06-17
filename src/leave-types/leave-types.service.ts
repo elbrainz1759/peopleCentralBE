@@ -101,9 +101,8 @@ export class LeaveTypesService {
       return this.findOne(unique_id);
     } catch (err) {
       if (err instanceof ConflictException) throw err;
+      if (err instanceof NotFoundException) throw err; // ← add this
       throw new InternalServerErrorException(err);
-    } finally {
-      conn.release();
     }
   }
 
