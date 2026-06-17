@@ -51,7 +51,8 @@ const baseLeaveType = {
   unique_id: 'lt-uid-1',
   name: 'Annual Leave',
   description: 'Yearly leave',
-  country: 'Nigeria',
+  country: 'country-uid-1',
+  country_name: 'Nigeria',
   require_document: 'No' as const,
   trigger_value: 0,
   created_by: mockUser.email,
@@ -69,19 +70,37 @@ const leaveTypeWithDoc = {
 describe('LeaveTypesService', () => {
 
   // ─── create ──────────────────────────────────────────────────────────────────
+  // Service query order:
+  //   1. name lookup (SELECT FROM leave_types WHERE name = ?)
+  //   2. country validation (SELECT FROM countries WHERE unique_id = ?)
+  //   3. INSERT (when no existing record)
+  //   — or —
+  //   3. UPDATE + findOne (when status = Deleted)
 
   describe('create', () => {
     const dto: any = {
       name: 'Annual Leave',
       description: 'Yearly leave',
-      country: 'Nigeria',
+      country: 'country-uid-1',
       requireDocument: 'No',
       trigger: 0,
     };
 
+    it('throws NotFoundException when country does not exist', async () => {
+      const conn = makeConn();
+      conn.query
+        .mockResolvedValueOnce([[]])  // name lookup → not found
+        .mockResolvedValueOnce([[]]); // country → not found
+
+      const service = await buildService(conn);
+      await expect(service.create(dto, mockUser)).rejects.toThrow(NotFoundException);
+    });
+
     it('throws ConflictException when name already exists and is Active', async () => {
       const conn = makeConn();
-      conn.query.mockResolvedValueOnce([[{ id: 1, status: 'Active' }]]);
+      conn.query
+        .mockResolvedValueOnce([[{ id: 1, status: 'Active' }]])   // name lookup → Active
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]]); // country found
 
       const service = await buildService(conn);
       await expect(service.create(dto, mockUser)).rejects.toThrow(ConflictException);
@@ -91,7 +110,10 @@ describe('LeaveTypesService', () => {
       const conn = makeConn();
       const findOneConn = makeConn();
 
-      conn.query.mockResolvedValueOnce([[{ id: 1, unique_id: 'lt-uid-1', status: 'Deleted' }]]);
+      conn.query
+        .mockResolvedValueOnce([[{ id: 1, unique_id: 'lt-uid-1', status: 'Deleted' }]]) // name lookup
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]]);                      // country found
+
       findOneConn.query.mockResolvedValueOnce([[baseLeaveType]]);
 
       const service = await buildService(conn, [findOneConn]);
@@ -109,8 +131,9 @@ describe('LeaveTypesService', () => {
       const findOneConn = makeConn();
 
       conn.query
-        .mockResolvedValueOnce([[]])               // no existing
-        .mockResolvedValueOnce([{ insertId: 1 }]); // INSERT
+        .mockResolvedValueOnce([[]])                               // name lookup → not found
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]]) // country found
+        .mockResolvedValueOnce([{ insertId: 1 }]);                  // INSERT
 
       findOneConn.query.mockResolvedValueOnce([[baseLeaveType]]);
 
@@ -120,7 +143,7 @@ describe('LeaveTypesService', () => {
       expect(result.require_document).toBe('No');
       expect(result.trigger_value).toBe(0);
       expect(conn.query).toHaveBeenNthCalledWith(
-        2,
+        3,
         expect.stringContaining('INSERT INTO leave_types'),
         expect.arrayContaining(['No', 0, mockUser.email]),
       );
@@ -132,6 +155,7 @@ describe('LeaveTypesService', () => {
 
       conn.query
         .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]])
         .mockResolvedValueOnce([{ insertId: 1 }]);
 
       findOneConn.query.mockResolvedValueOnce([[leaveTypeWithDoc]]);
@@ -145,7 +169,7 @@ describe('LeaveTypesService', () => {
       expect(result.require_document).toBe('Yes');
       expect(result.trigger_value).toBe(5);
       expect(conn.query).toHaveBeenNthCalledWith(
-        2,
+        3,
         expect.stringContaining('INSERT INTO leave_types'),
         expect.arrayContaining(['Yes', 5]),
       );
@@ -157,14 +181,18 @@ describe('LeaveTypesService', () => {
 
       conn.query
         .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-1' }]])
         .mockResolvedValueOnce([{ insertId: 1 }]);
 
       findOneConn.query.mockResolvedValueOnce([[baseLeaveType]]);
 
       const service = await buildService(conn, [findOneConn]);
-      await service.create({ name: 'Annual Leave', description: 'x', country: 'Nigeria', requireDocument: 'No' } as any, mockUser);
+      await service.create(
+        { name: 'Annual Leave', description: 'x', country: 'country-uid-1', requireDocument: 'No' } as any,
+        mockUser,
+      );
 
-      const insertArgs = conn.query.mock.calls[1][1];
+      const insertArgs = conn.query.mock.calls[2][1]; // 3rd query is INSERT
       expect(insertArgs[5]).toBe(0); // trigger_value position
     });
 
@@ -182,7 +210,7 @@ describe('LeaveTypesService', () => {
   // ─── findAll ─────────────────────────────────────────────────────────────────
 
   describe('findAll', () => {
-    it('returns paginated results', async () => {
+    it('returns paginated results with country_name from join', async () => {
       const conn = makeConn();
       conn.query
         .mockResolvedValueOnce([[{ total: 2 }]])
@@ -197,7 +225,19 @@ describe('LeaveTypesService', () => {
       expect(result.data[1].require_document).toBe('Yes');
     });
 
-    it('applies search filter in WHERE clause', async () => {
+    it('always filters by active status', async () => {
+      const conn = makeConn();
+      conn.query
+        .mockResolvedValueOnce([[{ total: 0 }]])
+        .mockResolvedValueOnce([[]]);
+
+      const service = await buildService(conn);
+      await service.findAll({} as any);
+
+      expect(conn.query.mock.calls[0][0]).toContain("a.status = 'Active'");
+    });
+
+    it('applies search filter using aliased columns', async () => {
       const conn = makeConn();
       conn.query
         .mockResolvedValueOnce([[{ total: 1 }]])
@@ -206,7 +246,21 @@ describe('LeaveTypesService', () => {
       const service = await buildService(conn);
       await service.findAll({ page: 1, limit: 10, search: 'Annual' } as any);
 
-      expect(conn.query.mock.calls[0][0]).toContain('WHERE name LIKE');
+      expect(conn.query.mock.calls[0][0]).toContain('a.name LIKE ?');
+      expect(conn.query.mock.calls[0][1]).toEqual(['%Annual%', '%Annual%']);
+    });
+
+    it('uses LEFT JOIN to include country_name', async () => {
+      const conn = makeConn();
+      conn.query
+        .mockResolvedValueOnce([[{ total: 1 }]])
+        .mockResolvedValueOnce([[baseLeaveType]]);
+
+      const service = await buildService(conn);
+      await service.findAll({} as any);
+
+      expect(conn.query.mock.calls[1][0]).toContain('LEFT JOIN countries b');
+      expect(conn.query.mock.calls[1][0]).toContain('b.name AS country_name');
     });
 
     it('uses defaults when page/limit omitted', async () => {
@@ -284,14 +338,41 @@ describe('LeaveTypesService', () => {
   });
 
   // ─── update ──────────────────────────────────────────────────────────────────
+  // Service query order:
+  //   1. existence check
+  //   2. country validation (only if dto.country provided)
+  //   3. execute UPDATE
+  //   4. findOne (new connection)
 
   describe('update', () => {
+    it('throws NotFoundException when id does not exist', async () => {
+      const conn = makeConn();
+      conn.query.mockResolvedValueOnce([[]]);
+
+      const service = await buildService(conn);
+      await expect(service.update('uid-missing', { name: 'x' } as any)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws NotFoundException when new country does not exist', async () => {
+      const conn = makeConn();
+      conn.query
+        .mockResolvedValueOnce([[{ id: 1 }]]) // existence check
+        .mockResolvedValueOnce([[]]);          // country not found
+
+      const service = await buildService(conn);
+      await expect(
+        service.update('lt-uid-1', { country: 'bad-country-uid' } as any),
+      ).rejects.toThrow(NotFoundException);
+    });
+
     it('maps requireDocument→require_document and trigger→trigger_value', async () => {
       const updated = { ...baseLeaveType, require_document: 'Yes' as const, trigger_value: 3 };
       const conn = makeConn();
       const findOneConn = makeConn();
 
-      conn.query.mockResolvedValueOnce([[{ id: 1 }]]);
+      conn.query.mockResolvedValueOnce([[{ id: 1 }]]); // existence check (no country in dto)
       findOneConn.query.mockResolvedValueOnce([[updated]]);
 
       const service = await buildService(conn, [findOneConn]);
@@ -305,6 +386,27 @@ describe('LeaveTypesService', () => {
       expect(sql).toContain('trigger_value = ?');
       expect(args).toContain('Yes');
       expect(args).toContain(3);
+    });
+
+    it('validates country then updates when country is provided', async () => {
+      const updated = { ...baseLeaveType, country: 'country-uid-2' };
+      const conn = makeConn();
+      const findOneConn = makeConn();
+
+      conn.query
+        .mockResolvedValueOnce([[{ id: 1 }]])                      // existence check
+        .mockResolvedValueOnce([[{ unique_id: 'country-uid-2' }]]); // country found
+
+      findOneConn.query.mockResolvedValueOnce([[updated]]);
+
+      const service = await buildService(conn, [findOneConn]);
+      const result = await service.update('lt-uid-1', { country: 'country-uid-2' } as any);
+
+      expect(result.country).toBe('country-uid-2');
+      expect(conn.execute).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE leave_types SET'),
+        expect.arrayContaining(['country-uid-2', 'lt-uid-1']),
+      );
     });
 
     it('updates trigger to 0 (zero is valid, not falsy-skipped)', async () => {
@@ -335,16 +437,6 @@ describe('LeaveTypesService', () => {
 
       expect(result).toEqual(baseLeaveType);
       expect(conn.execute).not.toHaveBeenCalled();
-    });
-
-    it('throws NotFoundException when id does not exist', async () => {
-      const conn = makeConn();
-      conn.query.mockResolvedValueOnce([[]]);
-
-      const service = await buildService(conn);
-      await expect(service.update('uid-missing', { name: 'x' } as any)).rejects.toThrow(
-        NotFoundException,
-      );
     });
   });
 
