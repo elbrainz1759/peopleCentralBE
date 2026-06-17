@@ -25,6 +25,7 @@ export interface LeaveTypeConfig {
   created_by: string;
   created_at: Date;
   updated_at: Date;
+  period: 'Monthly' | 'Annually';
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -98,8 +99,8 @@ export class LeaveTypeConfigsService {
 
       await conn.query<mysql.ResultSetHeader>(
         `INSERT INTO leave_type_country_config
-           (unique_id, leave_type_id, country, annual_hours, monthly_accrual_hours, created_by, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           (unique_id, leave_type_id, country, annual_hours, monthly_accrual_hours, created_by, status, period)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           unique_id,
           dto.leaveTypeId,
@@ -108,6 +109,7 @@ export class LeaveTypeConfigsService {
           dto.monthlyAccrualHours ?? null,
           createdBy,
           'Active',
+          dto.period,
         ],
       );
 
@@ -280,6 +282,10 @@ export class LeaveTypeConfigsService {
         fields.push('monthly_accrual_hours = ?');
         values.push(dto.monthlyAccrualHours); // caller passes null to clear accrual
       }
+      if (dto.period !== undefined) {
+        fields.push('period = ?');
+        values.push(dto.period);
+      }
 
       if (!fields.length) {
         throw new BadRequestException('No fields provided to update');
@@ -290,6 +296,7 @@ export class LeaveTypeConfigsService {
         country: 'country',
         annualHours: 'annual_hours',
         monthlyAccrualHours: 'monthly_accrual_hours',
+        period: 'period',
       };
       const mappedFields = fields.map((field) => columnMap[field] || field);
 

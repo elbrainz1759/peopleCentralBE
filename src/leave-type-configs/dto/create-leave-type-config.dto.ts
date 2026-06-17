@@ -22,4 +22,8 @@ export class CreateLeaveTypeConfigDto {
   @IsNumber()
   @Min(0)
   monthlyAccrualHours?: number | null;
+
+  @IsString()
+  @IsNotEmpty()
+  period!: 'Monthly' | 'Annually';
 }
