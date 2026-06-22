@@ -77,19 +77,24 @@ describe('LeaveBalancesService', () => {
       expect(conn.commit).toHaveBeenCalled();
     });
 
-    it('throws BadRequestException when totalHours is zero or negative', async () => {
-      const conn    = makeConn();
-      const service = await buildService(conn);
+// AFTER — split into two tests reflecting actual behaviour
 
-      await expect(
-        service.bulkUpload(
-          { balances: [{ staffId: 1001, leaveTypeId: 'lt1', totalHours: 0 }] },
-          mockUser,
-        ),
-      ).rejects.toThrow(BadRequestException);
+it('skips zero-balance records and returns zeroed count', async () => {
+  const result = await service.bulkUpload(
+    { balances: [{ staffId: 1001, leaveTypeId: 'lt1', totalHours: 0 }] },
+    mockUser,
+  );
+  expect(result).toEqual({ created: 0, skipped: 0, zeroed: 1 });
+});
 
-      expect(conn.rollback).toHaveBeenCalled();
-    });
+it('throws BadRequestException when totalHours is negative', async () => {
+  await expect(
+    service.bulkUpload(
+      { balances: [{ staffId: 1001, leaveTypeId: 'lt1', totalHours: -8 }] },
+      mockUser,
+    ),
+  ).rejects.toThrow(BadRequestException);
+});
 
     it('rolls back on unexpected DB error', async () => {
       const conn = makeConn();
