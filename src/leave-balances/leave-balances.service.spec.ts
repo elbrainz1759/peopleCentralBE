@@ -61,7 +61,7 @@ describe('LeaveBalancesService', () => {
         .mockResolvedValueOnce([[]])                    // no existing → staff 1001
         .mockResolvedValueOnce([{ insertId: 10 }])      // INSERT leave_balances → staff 1001
         .mockResolvedValueOnce([{}])                    // INSERT transaction
-        .mockResolvedValueOnce([[{ id: 99 }]])           // existing → staff 1002 (skip)
+        .mockResolvedValueOnce([[{ id: 99 }]]);          // existing → staff 1002 (skip)
 
       const service = await buildService(conn);
       const result  = await service.bulkUpload(
@@ -77,24 +77,32 @@ describe('LeaveBalancesService', () => {
       expect(conn.commit).toHaveBeenCalled();
     });
 
-// AFTER — split into two tests reflecting actual behaviour
+    it('skips zero-balance records and returns zeroed count', async () => {
+      const conn = makeConn();
+      const service = await buildService(conn);
 
-it('skips zero-balance records and returns zeroed count', async () => {
-  const result = await service.bulkUpload(
-    { balances: [{ staffId: 1001, leaveTypeId: 'lt1', totalHours: 0 }] },
-    mockUser,
-  );
-  expect(result).toEqual({ created: 0, skipped: 0, zeroed: 1 });
-});
+      const result = await service.bulkUpload(
+        { balances: [{ staffId: 1001, leaveTypeId: 'lt1', totalHours: 0 }] },
+        mockUser,
+      );
 
-it('throws BadRequestException when totalHours is negative', async () => {
-  await expect(
-    service.bulkUpload(
-      { balances: [{ staffId: 1001, leaveTypeId: 'lt1', totalHours: -8 }] },
-      mockUser,
-    ),
-  ).rejects.toThrow(BadRequestException);
-});
+      expect(result).toEqual({ created: 0, skipped: 0, zeroed: 1 });
+      expect(conn.query).not.toHaveBeenCalled(); // zero skipped before any DB touch
+    });
+
+    it('throws BadRequestException when totalHours is negative', async () => {
+      const conn = makeConn();
+      const service = await buildService(conn);
+
+      await expect(
+        service.bulkUpload(
+          { balances: [{ staffId: 1001, leaveTypeId: 'lt1', totalHours: -8 }] },
+          mockUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(conn.beginTransaction).not.toHaveBeenCalled(); // pre-flight, no tx opened
+    });
 
     it('rolls back on unexpected DB error', async () => {
       const conn = makeConn();
@@ -258,7 +266,6 @@ it('throws BadRequestException when totalHours is negative', async () => {
       // Verify the INSERT used 80 (capped), not 200
       const insertCall = conn.query.mock.calls[2]; // 3rd query = INSERT leave_balances
       const params     = insertCall[1] as unknown[];
-      // remaining_hours param is the 7th bind value: (unique_id, staff_id, lt_id, year, total, used=0, remaining, created_by)
       // total_hours and remaining_hours are both `carryover` = 80
       expect(params).toContain(80);
       expect(params).not.toContain(200);
