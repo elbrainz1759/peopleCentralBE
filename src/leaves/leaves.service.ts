@@ -333,13 +333,24 @@ export class LeavesService {
     if (isAccrual) {
       const [balanceRows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT remaining_hours
-         FROM   leave_balances
-         WHERE  staff_id = ? AND leave_type_id = ? AND year = ?`,
+     FROM   leave_balances
+     WHERE  staff_id = ? AND leave_type_id = ? AND year = ?`,
         [staffId, leaveTypeId, currentYear],
       );
-      const carryover = balanceRows.length
-        ? Number(balanceRows[0].remaining_hours)
-        : 0;
+
+      if (!balanceRows.length) {
+        const [[ltRow]] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT name FROM leave_types WHERE unique_id = ?`,
+          [leaveTypeId],
+        );
+        const ltName = (ltRow?.name as string) ?? leaveTypeId;
+        throw new BadRequestException(
+          `No leave balance has been seeded for "${ltName}" in ${currentYear}. ` +
+            `Please contact HR before submitting this leave request.`,
+        );
+      }
+
+      const carryover = Number(balanceRows[0].remaining_hours);
       const accruedHours = currentMonth * Number(config.monthly_accrual_hours);
       availableHours = carryover + accruedHours - usedHours;
     } else {

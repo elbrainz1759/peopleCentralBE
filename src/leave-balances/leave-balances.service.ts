@@ -69,31 +69,52 @@ export class LeaveBalancesService {
 
   // ---------------------------------------------------------------------------
   // POST /leave-balances/bulk-upload
+  //
   // HR seeds initial balances for the current year.
-  // Skips if a record already exists for staff + leave_type + year.
+  //
+  // DECISIONS:
+  //   1. totalHours === 0 → skip silently (zero-balance staff have nothing to
+  //      seed; they get a row when HR manually allocates or at rollover).
+  //      We do NOT throw — the caller sees { created, skipped } and can audit.
+  //   2. totalHours < 0 → throw BadRequestException immediately (data error).
+  //   3. Already-existing row for (staff, leaveType, year) → skip (idempotent).
+  //   4. All inserts run inside ONE transaction; any DB error rolls back the
+  //      entire batch so the caller can fix and retry cleanly.
   // ---------------------------------------------------------------------------
   async bulkUpload(
     dto: BulkUploadLeaveBalanceDto,
     user: RequestUser,
-  ): Promise<{ created: number; skipped: number }> {
+  ): Promise<{ created: number; skipped: number; zeroed: number }> {
     const conn = await this.pool.getConnection();
     const currentYear = new Date().getFullYear();
+
+    // ── Pre-flight validation (outside transaction — fail fast) ──────────────
+    const negatives = dto.balances.filter((b) => b.totalHours < 0);
+    if (negatives.length) {
+      conn.release();
+      throw new BadRequestException(
+        `${negatives.length} record(s) have negative totalHours. ` +
+          `First offender: staffId=${negatives[0].staffId}, hours=${negatives[0].totalHours}`,
+      );
+    }
 
     try {
       await conn.beginTransaction();
 
       let created = 0;
       let skipped = 0;
+      let zeroed = 0;
 
       for (const b of dto.balances) {
-        // Validate totalHours is positive before touching the DB
-        if (b.totalHours <= 0) {
-          throw new BadRequestException(
-            `totalHours must be positive for staffId ${b.staffId}`,
-          );
+        // Zero balance — record the count but do not insert a row.
+        // There is nothing meaningful to seed; the approval guard will still
+        // block correctly because no balance row means zero available.
+        if (b.totalHours === 0) {
+          zeroed++;
+          continue;
         }
 
-        // Year-scoped uniqueness check
+        // Year-scoped uniqueness check — skip duplicates (idempotent re-runs)
         const [existing] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT id FROM leave_balances
            WHERE staff_id = ? AND leave_type_id = ? AND year = ?`,
@@ -118,7 +139,7 @@ export class LeaveBalancesService {
             b.leaveTypeId,
             currentYear,
             b.totalHours,
-            b.totalHours,
+            b.totalHours, // remaining = total at creation
             created_by,
           ],
         );
@@ -141,7 +162,7 @@ export class LeaveBalancesService {
       }
 
       await conn.commit();
-      return { created, skipped };
+      return { created, skipped, zeroed };
     } catch (err) {
       await conn.rollback();
       if (err instanceof BadRequestException) throw err;
@@ -162,9 +183,6 @@ export class LeaveBalancesService {
   // ConflictException — telling the caller the month was already accrued.
   // This means running the job twice in the same calendar month is completely
   // safe: the second run exits cleanly with no mutations.
-  //
-  // FIX: transaction now wraps the entire operation including the accrual_log
-  // insert so the guard and the mutations are atomic.
   // ---------------------------------------------------------------------------
   async monthlyAccrue(
     leaveTypeId: string,
@@ -193,13 +211,11 @@ export class LeaveBalancesService {
       if (Number(typeCheck[0].cnt) === 0) {
         await conn.rollback();
         throw new BadRequestException(
-          'This leave type has no accrual configuration. Only annual leave types should be accrued.',
+          'This leave type has no accrual configuration. Only accrual leave types should be accrued.',
         );
       }
 
-      // ── Idempotency gate: one accrual per (leave_type, year, month) ────────
-      // INSERT IGNORE silently skips on duplicate key — we then check if the
-      // row was actually inserted (affectedRows === 1) or already existed (0).
+      // ── Idempotency gate ───────────────────────────────────────────────────
       const [logInsert] = await conn.query<mysql.ResultSetHeader>(
         `INSERT IGNORE INTO accrual_log
            (leave_type_id, year, month, accrued_count, skipped_count, run_by)
@@ -208,19 +224,17 @@ export class LeaveBalancesService {
       );
 
       if (logInsert.affectedRows === 0) {
-        // Row already existed — this month has already been accrued
         await conn.rollback();
         throw new ConflictException(
-          `Accrual for leave type ${leaveTypeId} has already run for ${currentYear}-${String(currentMonth).padStart(2, '0')}. ` +
+          `Accrual for leave type ${leaveTypeId} has already run for ` +
+            `${currentYear}-${String(currentMonth).padStart(2, '0')}. ` +
             `Run it again next month or delete the accrual_log row to force a re-run.`,
         );
       }
 
       const logId = logInsert.insertId;
 
-      // ── Fetch all active balances for this leave type in the current year ──
-      // Join to employee so we can resolve each staff member's country-specific
-      // accrual rate from leave_type_country_config.
+      // ── Fetch all active balances for this leave type ──────────────────────
       const [balances] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT
            lb.id                       AS balance_id,
@@ -238,7 +252,6 @@ export class LeaveBalancesService {
       );
 
       if (!balances.length) {
-        // Update log with zero counts and commit so the guard row persists
         await conn.query(
           `UPDATE accrual_log SET accrued_count = 0, skipped_count = 0 WHERE id = ?`,
           [logId],
@@ -258,7 +271,6 @@ export class LeaveBalancesService {
       for (const balance of balances) {
         const hoursToAccrue = Number(balance.monthly_accrual_hours);
 
-        // Skip if no rate resolved (staff country not configured)
         if (!hoursToAccrue || hoursToAccrue <= 0) {
           skipped++;
           continue;
@@ -290,11 +302,8 @@ export class LeaveBalancesService {
         accrued++;
       }
 
-      // Persist final counts to the log row
       await conn.query(
-        `UPDATE accrual_log
-         SET accrued_count = ?, skipped_count = ?
-         WHERE id = ?`,
+        `UPDATE accrual_log SET accrued_count = ?, skipped_count = ? WHERE id = ?`,
         [accrued, skipped, logId],
       );
 
@@ -336,7 +345,6 @@ export class LeaveBalancesService {
     const newYear = closingYear + 1;
 
     try {
-      // Fetch all closing-year balances for annual leave
       const [closingBalances] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT id, staff_id, remaining_hours
          FROM leave_balances
@@ -354,7 +362,6 @@ export class LeaveBalancesService {
       let skipped = 0;
 
       for (const closing of closingBalances) {
-        // Idempotent re-run guard
         const [existing] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT id FROM leave_balances
            WHERE staff_id = ? AND leave_type_id = ? AND year = ?`,
@@ -365,7 +372,6 @@ export class LeaveBalancesService {
           continue;
         }
 
-        // Guard against negative remaining_hours then cap at MAX_CARRYOVER_HOURS
         const carryover = Math.min(
           Math.max(0, Number(closing.remaining_hours)),
           MAX_CARRYOVER_HOURS,
@@ -458,7 +464,7 @@ export class LeaveBalancesService {
 
   // ---------------------------------------------------------------------------
   // GET /leave-balances/staff/:staffId/transactions
-  // Paginated transaction history (credits, debits, reversals) for a staff member.
+  // Paginated transaction history for a staff member.
   // ---------------------------------------------------------------------------
   async findTransactionsByStaff(
     staffId: number,
@@ -498,7 +504,6 @@ export class LeaveBalancesService {
 
   // ---------------------------------------------------------------------------
   // GET /leave-balances/accrual-log
-  // Returns the full accrual history so ops can verify idempotency status.
   // ---------------------------------------------------------------------------
   async findAccrualLog(
     leaveTypeId?: string,
