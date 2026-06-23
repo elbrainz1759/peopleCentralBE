@@ -21,7 +21,7 @@ import type { Request } from 'express';
 export class LeaveBalancesController {
   constructor(private readonly leaveBalancesService: LeaveBalancesService) {}
 
-  // POST /leave-balances/bulk-upload  (HR seeds all staff balances for the current year)
+  // POST /leave-balances/bulk-upload
   @Post('bulk-upload')
   @HttpCode(HttpStatus.CREATED)
   bulkUpload(@Body() dto: BulkUploadLeaveBalanceDto, @Req() req: Request) {
@@ -29,8 +29,7 @@ export class LeaveBalancesController {
     return this.leaveBalancesService.bulkUpload(dto, user);
   }
 
-  // POST /leave-balances/accrue  (Trigger monthly accrual — run via PM2 cron on the 1st of each month)
-  // Accrual rates are resolved per-staff from leave_type_country_config, not passed in the body.
+  // POST /leave-balances/accrue
   @Post('accrue')
   @HttpCode(HttpStatus.OK)
   accrue(@Body() dto: AccrueLeaveBalanceDto, @Req() req: Request) {
@@ -41,8 +40,7 @@ export class LeaveBalancesController {
     );
   }
 
-  // POST /leave-balances/rollover  (Trigger year-end rollover — run via PM2 cron on Jan 1)
-  // Caps each staff member's unused annual leave at 80hrs and seeds the new year's balance.
+  // POST /leave-balances/rollover
   @Post('rollover')
   @HttpCode(HttpStatus.OK)
   rollover(@Body() dto: RolloverLeaveBalanceDto, @Req() req: Request) {
@@ -53,7 +51,26 @@ export class LeaveBalancesController {
     );
   }
 
+  // GET /leave-balances?page=1&limit=20&year=2026&search=john
+  // Returns all staff with their balances nested by leave type.
+  @Get()
+  findAll(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 20,
+    @Query('year') year?: number,
+    @Query('search') search?: string,
+  ) {
+    return this.leaveBalancesService.findAll(
+      Number(page),
+      Number(limit),
+      year ? Number(year) : undefined,
+      search,
+    );
+  }
+
   // GET /leave-balances/staff/:staffId
+  // Returns one staff member's balances across all leave types for the current year.
+  // NOTE: must be declared before any generic /:id route to avoid route shadowing.
   @Get('staff/:staffId')
   findByStaff(@Param('staffId', ParseIntPipe) staffId: number) {
     return this.leaveBalancesService.findByStaff(staffId);
@@ -70,6 +87,18 @@ export class LeaveBalancesController {
       staffId,
       Number(page),
       Number(limit),
+    );
+  }
+
+  // GET /leave-balances/accrual-log?leaveTypeId=xxx&year=2026
+  @Get('accrual-log')
+  findAccrualLog(
+    @Query('leaveTypeId') leaveTypeId?: string,
+    @Query('year') year?: number,
+  ) {
+    return this.leaveBalancesService.findAccrualLog(
+      leaveTypeId,
+      year ? Number(year) : undefined,
     );
   }
 }

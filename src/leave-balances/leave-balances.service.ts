@@ -58,6 +58,22 @@ export interface PaginatedResult<T> {
   };
 }
 
+export interface StaffBalanceSummary {
+  staff_id: string;
+  full_name: string;
+  designation: string | null;
+  department_name: string | null;
+  location_name: string | null;
+  program_name: string | null;
+  balances: {
+    leave_type_id: string;
+    leave_type_name: string;
+    total_hours: number;
+    used_hours: number;
+    remaining_hours: number;
+  }[];
+}
+
 // Max hours that can be carried over from one year to the next
 const MAX_CARRYOVER_HOURS = 80;
 
@@ -416,6 +432,122 @@ export class LeaveBalancesService {
       return { rolled, skipped, closingYear, newYear };
     } catch (err) {
       await conn.rollback();
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /leave-balances
+  // All staff balances for the current (or requested) year, paginated.
+  // Each staff entry includes a nested `balances` array — one entry per leave
+  // type — so the frontend can render a balance matrix without a second call.
+  //
+  // Optional query params:
+  //   year   — defaults to current year
+  //   search — partial match on first_name, last_name, or staff_id
+  //   page / limit
+  // ---------------------------------------------------------------------------
+  async findAll(
+    page: number = 1,
+    limit: number = 20,
+    year?: number,
+    search?: string,
+  ): Promise<PaginatedResult<StaffBalanceSummary>> {
+    const conn = await this.pool.getConnection();
+    const targetYear = year ?? new Date().getFullYear();
+
+    try {
+      const conditions: string[] = ['lb.year = ?'];
+      const params: (string | number)[] = [targetYear];
+
+      if (search) {
+        conditions.push(
+          `(e.first_name LIKE ? OR e.last_name LIKE ? OR lb.staff_id LIKE ?)`,
+        );
+        const term = `%${search}%`;
+        params.push(term, term, term);
+      }
+
+      const where = `WHERE ${conditions.join(' AND ')}`;
+
+      // Count distinct staff members who have at least one balance row
+      const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT COUNT(DISTINCT lb.staff_id) AS total
+         FROM leave_balances lb
+         LEFT JOIN employee e ON e.staff_id = lb.staff_id
+         ${where}`,
+        params,
+      );
+      const total = Number(countRow.total);
+
+      const offset = (page - 1) * limit;
+
+      // Fetch all balance rows for the page of staff members in one query.
+      // We first identify the paged staff_ids via a subquery, then join all
+      // their balance rows — avoiding N+1 queries.
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT
+           lb.staff_id,
+           CONCAT(e.first_name, ' ', e.last_name) AS full_name,
+           e.designation,
+           lb.leave_type_id,
+           lt.name   AS leave_type_name,
+           lb.total_hours,
+           lb.used_hours,
+           lb.remaining_hours,
+           d.name    AS department_name,
+           l.name    AS location_name,
+           p.name    AS program_name
+         FROM leave_balances lb
+         LEFT JOIN employee e    ON e.staff_id   = lb.staff_id
+         LEFT JOIN leave_types lt ON lt.unique_id = lb.leave_type_id
+         LEFT JOIN departments d  ON d.unique_id  = e.department
+         LEFT JOIN locations l    ON l.unique_id  = e.location
+         LEFT JOIN programs p     ON p.unique_id  = e.program
+         WHERE lb.staff_id IN (
+           SELECT DISTINCT lb2.staff_id
+           FROM leave_balances lb2
+           LEFT JOIN employee e2 ON e2.staff_id = lb2.staff_id
+           ${where}
+           ORDER BY lb2.staff_id ASC
+           LIMIT ? OFFSET ?
+         )
+         AND lb.year = ?
+         ORDER BY lb.staff_id ASC, lt.name ASC`,
+        [...params, limit, offset, ...params, targetYear],
+      );
+
+      // Group flat rows into per-staff summaries
+      const summaryMap = new Map<string, StaffBalanceSummary>();
+      for (const r of rows) {
+        const key = String(r.staff_id);
+        if (!summaryMap.has(key)) {
+          summaryMap.set(key, {
+            staff_id: key,
+            full_name: (r.full_name as string) ?? key,
+            designation: (r.designation as string) ?? null,
+            department_name: (r.department_name as string) ?? null,
+            location_name: (r.location_name as string) ?? null,
+            program_name: (r.program_name as string) ?? null,
+            balances: [],
+          });
+        }
+        summaryMap.get(key)!.balances.push({
+          leave_type_id: r.leave_type_id as string,
+          leave_type_name: (r.leave_type_name as string) ?? r.leave_type_id,
+          total_hours: Number(r.total_hours),
+          used_hours: Number(r.used_hours),
+          remaining_hours: Number(r.remaining_hours),
+        });
+      }
+
+      return {
+        data: [...summaryMap.values()],
+        meta: { total, page, limit, last_page: Math.ceil(total / limit) },
+      };
+    } catch (err) {
       throw new InternalServerErrorException(err);
     } finally {
       conn.release();
