@@ -501,22 +501,22 @@ export class LeaveBalancesService {
            l.name    AS location_name,
            p.name    AS program_name
          FROM leave_balances lb
-         LEFT JOIN employee e    ON e.staff_id   = lb.staff_id
-         LEFT JOIN leave_types lt ON lt.unique_id = lb.leave_type_id
-         LEFT JOIN departments d  ON d.unique_id  = e.department
-         LEFT JOIN locations l    ON l.unique_id  = e.location
-         LEFT JOIN programs p     ON p.unique_id  = e.program
-         WHERE lb.staff_id IN (
+         LEFT JOIN employee e     ON e.staff_id   = lb.staff_id
+         LEFT JOIN leave_types lt  ON lt.unique_id = lb.leave_type_id
+         LEFT JOIN departments d   ON d.unique_id  = e.department
+         LEFT JOIN locations l     ON l.unique_id  = e.location
+         LEFT JOIN programs p      ON p.unique_id  = e.program
+         INNER JOIN (
            SELECT DISTINCT lb2.staff_id
            FROM leave_balances lb2
            LEFT JOIN employee e2 ON e2.staff_id = lb2.staff_id
            ${where}
            ORDER BY lb2.staff_id ASC
            LIMIT ? OFFSET ?
-         )
+         ) paged ON paged.staff_id = lb.staff_id
          AND lb.year = ?
          ORDER BY lb.staff_id ASC, lt.name ASC`,
-        [...params, limit, offset, ...params, targetYear],
+        [...params, limit, offset, targetYear],
       );
 
       // Group flat rows into per-staff summaries
