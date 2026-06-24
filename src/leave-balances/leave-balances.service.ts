@@ -459,12 +459,12 @@ export class LeaveBalancesService {
     const targetYear = year ?? new Date().getFullYear();
 
     try {
-      const conditions: string[] = ['lb.year = ?'];
+      const conditions: string[] = ['lb2.year = ?'];
       const params: (string | number)[] = [targetYear];
 
       if (search) {
         conditions.push(
-          `(e.first_name LIKE ? OR e.last_name LIKE ? OR lb.staff_id LIKE ?)`,
+          `(e2.first_name LIKE ? OR e2.last_name LIKE ? OR lb2.staff_id LIKE ?)`,
         );
         const term = `%${search}%`;
         params.push(term, term, term);
@@ -472,13 +472,27 @@ export class LeaveBalancesService {
 
       const where = `WHERE ${conditions.join(' AND ')}`;
 
+      // Count query uses lb/e aliases (not lb2/e2 which are subquery-scoped)
+      const countConditions: string[] = ['lb.year = ?'];
+      const countParams: (string | number)[] = [targetYear];
+
+      if (search) {
+        countConditions.push(
+          `(e.first_name LIKE ? OR e.last_name LIKE ? OR lb.staff_id LIKE ?)`,
+        );
+        const term = `%${search}%`;
+        countParams.push(term, term, term);
+      }
+
+      const countWhere = `WHERE ${countConditions.join(' AND ')}`;
+
       // Count distinct staff members who have at least one balance row
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT COUNT(DISTINCT lb.staff_id) AS total
          FROM leave_balances lb
          LEFT JOIN employee e ON e.staff_id = lb.staff_id
-         ${where}`,
-        params,
+         ${countWhere}`,
+        countParams,
       );
       const total = Number(countRow.total);
 
