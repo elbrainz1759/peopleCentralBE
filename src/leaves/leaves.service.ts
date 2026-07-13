@@ -223,7 +223,7 @@ export class LeavesService {
     const supervisorEmail = (staffRows[0]?.supervisor_email as string) ?? null;
 
     const [hrRows] = await conn.query<mysql.RowDataPacket[]>(
-      `SELECT email FROM users WHERE role = 'hr' AND is_active = 1`,
+      `SELECT email FROM users WHERE role = 'HR' AND status = 'Active'`,
     );
     const hrEmails = hrRows.map((r) => r.email as string);
 

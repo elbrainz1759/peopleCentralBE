@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { ExitInterviewService } from './exit-interviews.service';
+import { MailService } from 'src/mail/mail.service';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -21,12 +22,18 @@ const makeConn = () => ({
   release: jest.fn(),
 });
 
+const mockMailService = {
+  sendCaseNotification: jest.fn().mockResolvedValue(undefined),
+  sendToMany: jest.fn().mockResolvedValue(undefined),
+};
+
 const buildService = async (conn: ReturnType<typeof makeConn>) => {
   const pool = { getConnection: jest.fn().mockResolvedValue(conn) };
   const module = await Test.createTestingModule({
     providers: [
       ExitInterviewService,
       { provide: 'MYSQL_POOL', useValue: pool },
+      { provide: MailService, useValue: mockMailService },
     ],
   }).compile();
   return module.get(ExitInterviewService);

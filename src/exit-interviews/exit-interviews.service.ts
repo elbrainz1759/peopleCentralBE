@@ -11,6 +11,7 @@ import { UpdateExitInterviewDto } from './dto/update-exit-interview.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { ensureExists } from '../utils/check-exit.util';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { MailService } from '../mail/mail.service';
 
 // ─── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ export interface ExitInterview {
 export interface ExitInterviewDetail extends ExitInterview {
   staff_first_name: string;
   staff_last_name: string;
+  staff_email: string;
   department_name: string;
   location_name: string;
   country_name: string;
@@ -108,6 +110,7 @@ const DETAIL_SELECT = `
   ei.*,
   e.first_name AS staff_first_name,
   e.last_name  AS staff_last_name,
+  e.email      AS staff_email,
   d.name       AS department_name,
   l.name       AS location_name,
   c.name       AS country_name,
@@ -155,9 +158,92 @@ const NEXT_STAGE: Record<ClearDepartment, { status: string; stage: string }> = {
   HR_Director: { status: 'Approved', stage: 'Completed' },
 };
 
+// Maps an exit-interview stage name to the actual `users.role` value that
+// should be notified for it — the roles table uses "Operation" (singular)
+// and has no distinct "HR_Director" role, so that stage falls back to HR.
+const STAGE_ROLE_MAP: Record<string, string> = {
+  Operations: 'Operation',
+  Finance: 'Finance',
+  HR: 'HR',
+  HR_Director: 'HR',
+};
+
+// ─── Notification message builders ────────────────────────────────────────────
+
+function msgExitSubmitted(
+  staffName: string,
+  resignationDate: string,
+  reason: string,
+): string {
+  return (
+    `${staffName} has submitted an exit interview.\n\n` +
+    `Resignation date   : ${resignationDate}\n` +
+    `Reason for leaving : ${reason}\n\n` +
+    `The request is now Pending Supervisor clearance.`
+  );
+}
+
+function msgDepartmentCleared(
+  staffName: string,
+  department: string,
+  nextStage: string,
+): string {
+  return (
+    `The exit interview for ${staffName} has been cleared by ${department}.\n\n` +
+    (nextStage === 'Completed'
+      ? `All clearances are now complete.`
+      : `It is now awaiting ${nextStage} clearance.`)
+  );
+}
+
+function msgAwaitingClearance(staffName: string, stage: string): string {
+  return (
+    `An exit interview for ${staffName} is awaiting your department's clearance (${stage}).\n\n` +
+    `Please review and clear it at your earliest convenience.`
+  );
+}
+
+function msgFinalized(staffName: string): string {
+  return (
+    `The exit interview for ${staffName} has been finalized and approved by the HR Director.\n\n` +
+    `No further action is required.`
+  );
+}
+
 @Injectable()
 export class ExitInterviewService {
-  constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
+  constructor(
+    @Inject('MYSQL_POOL') private readonly pool: mysql.Pool,
+    private readonly mailService: MailService,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // PRIVATE — emails of active users holding a given role (case-insensitive)
+  // ---------------------------------------------------------------------------
+  private async resolveDeptEmails(
+    conn: mysql.PoolConnection,
+    role: string,
+  ): Promise<string[]> {
+    const [rows] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT email FROM users WHERE LOWER(role) = LOWER(?) AND status = 'Active'`,
+      [role],
+    );
+    return rows.map((r) => r.email as string);
+  }
+
+  // ---------------------------------------------------------------------------
+  // PRIVATE — resolve an employee's email from their unique_id
+  // ---------------------------------------------------------------------------
+  private async resolveEmployeeEmail(
+    conn: mysql.PoolConnection,
+    uniqueId: string,
+  ): Promise<string | null> {
+    const [[row]] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT email FROM employee WHERE unique_id = ?`,
+      [uniqueId],
+    );
+    return (row?.email as string) ?? null;
+  }
 
   // ---------------------------------------------------------------------------
   // PRIVATE — write an audit log entry
@@ -322,7 +408,48 @@ export class ExitInterviewService {
         },
       );
 
-      return this.findOne(unique_id);
+      const detail = await this.findOne(unique_id);
+
+      // Notifications — non-fatal
+      try {
+        const staffName =
+          `${detail.staff_first_name} ${detail.staff_last_name}`.trim() ||
+          String(dto.staffId);
+        const supervisorEmail = await this.resolveEmployeeEmail(
+          conn,
+          dto.supervisorId,
+        );
+        const hrEmails = await this.resolveDeptEmails(conn, 'HR');
+
+        const message = msgExitSubmitted(
+          staffName,
+          dto.resignationDate,
+          dto.reasonForLeaving,
+        );
+        const mailOpts = {
+          message,
+          subject: 'Mercy Corps Exit Interview',
+          subjectFull: 'Exit Interview Submitted',
+          siteName: 'Mercy Corps Nigeria',
+        };
+
+        if (detail.staff_email)
+          await this.mailService.sendCaseNotification({
+            ...mailOpts,
+            to: detail.staff_email,
+          });
+        if (supervisorEmail)
+          await this.mailService.sendCaseNotification({
+            ...mailOpts,
+            to: supervisorEmail,
+          });
+        if (hrEmails.length)
+          await this.mailService.sendToMany(hrEmails, mailOpts);
+      } catch {
+        /* non-fatal */
+      }
+
+      return detail;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);
@@ -586,7 +713,7 @@ export class ExitInterviewService {
       await conn.beginTransaction();
 
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT stage, status FROM exit_interviews WHERE unique_id = ?`,
+        `SELECT stage, status, staff_id FROM exit_interviews WHERE unique_id = ?`,
         [id],
       );
       if (!existing.length)
@@ -594,6 +721,7 @@ export class ExitInterviewService {
 
       const fromStage = existing[0]['stage'] as string;
       const fromStatus = existing[0]['status'] as string;
+      const staffId = existing[0]['staff_id'] as number;
 
       // Insert clearance rows — IGNORE duplicates
       for (const itemId of checkListItemIds) {
@@ -644,7 +772,57 @@ export class ExitInterviewService {
       );
 
       await conn.commit();
-      return this.getClearanceStatus(id);
+      const result = await this.getClearanceStatus(id);
+
+      // Notifications — non-fatal
+      try {
+        const [[staffRow]] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT CONCAT(first_name, ' ', last_name) AS full_name, email
+           FROM employee WHERE staff_id = ?`,
+          [staffId],
+        );
+        const staffName = (staffRow?.full_name as string) ?? String(staffId);
+        const staffEmail = (staffRow?.email as string) ?? null;
+        const hrEmails = await this.resolveDeptEmails(conn, 'HR');
+
+        const clearedMessage = msgDepartmentCleared(
+          staffName,
+          department,
+          nextStage,
+        );
+        const clearedMailOpts = {
+          message: clearedMessage,
+          subject: 'Mercy Corps Exit Interview',
+          subjectFull: `${department} Clearance Recorded`,
+          siteName: 'Mercy Corps Nigeria',
+        };
+
+        if (staffEmail)
+          await this.mailService.sendCaseNotification({
+            ...clearedMailOpts,
+            to: staffEmail,
+          });
+        if (hrEmails.length)
+          await this.mailService.sendToMany(hrEmails, clearedMailOpts);
+
+        // Notify the next approver group (HR is already covered above)
+        const nextRole = STAGE_ROLE_MAP[nextStage];
+        if (nextRole && nextRole !== 'HR') {
+          const nextEmails = await this.resolveDeptEmails(conn, nextRole);
+          if (nextEmails.length) {
+            await this.mailService.sendToMany(nextEmails, {
+              message: msgAwaitingClearance(staffName, nextStage),
+              subject: 'Mercy Corps Exit Interview',
+              subjectFull: `Exit Interview Awaiting ${nextStage} Clearance`,
+              siteName: 'Mercy Corps Nigeria',
+            });
+          }
+        }
+      } catch {
+        /* non-fatal */
+      }
+
+      return result;
     } catch (err) {
       await conn.rollback();
       if (err instanceof NotFoundException) throw err;
@@ -698,7 +876,34 @@ export class ExitInterviewService {
         },
       );
 
-      return this.findOne(id);
+      const detail = await this.findOne(id);
+
+      // Notifications — non-fatal
+      try {
+        const staffName =
+          `${detail.staff_first_name} ${detail.staff_last_name}`.trim() ||
+          String(detail.staff_id);
+        const hrEmails = await this.resolveDeptEmails(conn, 'HR');
+
+        const mailOpts = {
+          message: msgFinalized(staffName),
+          subject: 'Mercy Corps Exit Interview',
+          subjectFull: 'Exit Interview Finalized',
+          siteName: 'Mercy Corps Nigeria',
+        };
+
+        if (detail.staff_email)
+          await this.mailService.sendCaseNotification({
+            ...mailOpts,
+            to: detail.staff_email,
+          });
+        if (hrEmails.length)
+          await this.mailService.sendToMany(hrEmails, mailOpts);
+      } catch {
+        /* non-fatal */
+      }
+
+      return detail;
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
       throw new InternalServerErrorException(err);

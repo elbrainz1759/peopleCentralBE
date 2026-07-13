@@ -17,6 +17,7 @@ export interface UserRow extends mysql.RowDataPacket {
   unique_id: string;
   email: string;
   role: string;
+  status?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   staff_id?: number | null;
@@ -29,15 +30,16 @@ export interface UserRow extends mysql.RowDataPacket {
 export class UsersService {
   constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
 
-  // GET ALL USERS
+  // GET ALL USERS (excludes soft-deleted accounts)
   async findAll() {
     const [rows] = await this.pool.query<UserRow[]>(
-      `SELECT 
+      `SELECT
         u.id,
         u.passChanged,
         u.unique_id,
         u.email,
         u.role,
+        u.status,
         e.first_name,
         e.last_name,
         e.staff_id,
@@ -46,6 +48,7 @@ export class UsersService {
         e.location
       FROM users u
       LEFT JOIN employee e ON e.email = u.email
+      WHERE u.status IS NULL OR u.status != 'Deleted'
       ORDER BY u.id DESC`,
     );
     return rows;
@@ -54,12 +57,13 @@ export class UsersService {
   // GET ONE USER
   async findOne(unique_id: string) {
     const [rows] = await this.pool.query<UserRow[]>(
-      `SELECT 
+      `SELECT
         u.id,
         u.passChanged,
         u.unique_id,
         u.email,
         u.role,
+        u.status,
         e.first_name,
         e.last_name,
         e.staff_id,

@@ -98,8 +98,8 @@ export class AuthService {
       const unique_id: string = randomBytes(16).toString('hex');
 
       await this.pool.query<mysql.ResultSetHeader>(
-        'INSERT INTO users (email, password, role, unique_id) VALUES (?, ?, ?, ?)',
-        [email, hashed, role, unique_id],
+        'INSERT INTO users (email, password, role, unique_id, status) VALUES (?, ?, ?, ?, ?)',
+        [email, hashed, role, unique_id, 'Active'],
       );
 
       return { message: 'User registered successfully', unique_id };
@@ -175,8 +175,8 @@ export class AuthService {
 
       // Insert user
       await connection.query<mysql.ResultSetHeader>(
-        'INSERT INTO users (email, password, role, unique_id, passChanged) VALUES (?, ?, ?, ?, ?)',
-        [email, hashed, role, unique_id, 0],
+        'INSERT INTO users (email, password, role, unique_id, passChanged, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [email, hashed, role, unique_id, 0, 'Active'],
       );
 
       // Activate employee
