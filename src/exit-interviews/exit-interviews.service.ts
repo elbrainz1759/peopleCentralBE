@@ -119,7 +119,7 @@ const DETAIL_SELECT = `
 `;
 
 const DETAIL_JOINS = `
-  LEFT JOIN employee e    ON e.unique_id = ei.staff_id
+  LEFT JOIN employee e    ON e.staff_id = ei.staff_id
   LEFT JOIN departments d ON d.unique_id = ei.department_id
   LEFT JOIN locations l   ON l.unique_id = ei.location_id
   LEFT JOIN countries c   ON c.unique_id = ei.country_id
