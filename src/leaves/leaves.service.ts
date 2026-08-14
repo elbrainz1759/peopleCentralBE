@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   InternalServerErrorException,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
 import { randomBytes } from 'crypto';
@@ -193,6 +194,8 @@ function msgCancelled(
 
 @Injectable()
 export class LeavesService {
+  private readonly logger = new Logger(LeavesService.name);
+
   constructor(
     @Inject('MYSQL_POOL') private readonly pool: mysql.Pool,
     private readonly mailService: MailService,
@@ -583,8 +586,11 @@ export class LeavesService {
             ),
           });
         }
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        this.logger.error(
+          `Failed to send leave-created notifications for leave ${leaveId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
 
       return leave;
@@ -810,8 +816,11 @@ export class LeavesService {
             ...mailOpts,
             to: supervisorEmail,
           });
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        this.logger.error(
+          `Failed to send leave-reviewed notifications for leave ${id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
 
       return updated;
@@ -974,8 +983,11 @@ export class LeavesService {
           });
         if (hrEmails.length)
           await this.mailService.sendToMany(hrEmails, mailOpts);
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        this.logger.error(
+          `Failed to send leave-approved notifications for leave ${id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
 
       return updated;
@@ -1104,8 +1116,11 @@ export class LeavesService {
           });
         if (hrEmails.length)
           await this.mailService.sendToMany(hrEmails, mailOpts);
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        this.logger.error(
+          `Failed to send leave-rejected notifications for leave ${id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
 
       return updated;
@@ -1211,8 +1226,11 @@ export class LeavesService {
           });
         if (hrEmails.length)
           await this.mailService.sendToMany(hrEmails, mailOpts);
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        this.logger.error(
+          `Failed to send leave-cancelled notifications for leave ${id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
 
       return updated;

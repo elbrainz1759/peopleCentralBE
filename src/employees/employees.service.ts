@@ -80,6 +80,28 @@ export class EmployeeService {
 
       await Promise.all(checks);
 
+      // If the employee already exists (e.g. seeded via a staff import),
+      // registering just updates their record instead of failing on the
+      // duplicate email/staff_id constraint. Status and supervisor are left
+      // untouched — this form doesn't collect either.
+      const [existingRows] = await this.pool.query<EmployeeRow[]>(
+        'SELECT unique_id FROM employee WHERE email = ?',
+        [email],
+      );
+
+      if (existingRows.length > 0) {
+        return this.update(existingRows[0].unique_id, {
+          firstName,
+          lastName,
+          designation,
+          staffId,
+          locationId,
+          departmentId,
+          programId,
+          countryId,
+        });
+      }
+
       try {
         const [result] = await this.pool.query<mysql.ResultSetHeader>(
           `INSERT INTO employee (status, unique_id, designation, first_name, last_name, staff_id, email, location, department, program, country, created_by)

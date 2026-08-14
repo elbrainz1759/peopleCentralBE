@@ -3,6 +3,7 @@ import {
   NotFoundException,
   InternalServerErrorException,
   Inject,
+  Logger,
 } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
 import { randomBytes } from 'crypto';
@@ -212,6 +213,8 @@ function msgFinalized(staffName: string): string {
 
 @Injectable()
 export class ExitInterviewService {
+  private readonly logger = new Logger(ExitInterviewService.name);
+
   constructor(
     @Inject('MYSQL_POOL') private readonly pool: mysql.Pool,
     private readonly mailService: MailService,
@@ -445,8 +448,11 @@ export class ExitInterviewService {
           });
         if (hrEmails.length)
           await this.mailService.sendToMany(hrEmails, mailOpts);
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        this.logger.error(
+          `Failed to send exit-interview-submitted notifications for ${unique_id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
 
       return detail;
@@ -818,8 +824,11 @@ export class ExitInterviewService {
             });
           }
         }
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        this.logger.error(
+          `Failed to send exit-interview clearance notifications for ${id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
 
       return result;
@@ -899,8 +908,11 @@ export class ExitInterviewService {
           });
         if (hrEmails.length)
           await this.mailService.sendToMany(hrEmails, mailOpts);
-      } catch {
-        /* non-fatal */
+      } catch (err) {
+        this.logger.error(
+          `Failed to send exit-interview-finalized notifications for ${id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
       }
 
       return detail;
