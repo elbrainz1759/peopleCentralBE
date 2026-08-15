@@ -650,10 +650,13 @@ beforeEach(() => {
       queueMocks(conn, [
         [[reviewedLeave]],
         [[baseDuration]],
-        [[{ id: 5, remaining_hours: 100 }]],
-        [[{ country: 'Nigeria' }]],
-        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
-        [[{ used_hours: 0 }]],
+        [[{ country: 'Nigeria' }]],                              // staffCountry (once, before type loop)
+        [[{ monthly_accrual_hours: 13.33 }]],                     // isAccrual check — accrual type
+        [[{ id: 5, remaining_hours: 100 }]],                      // balance row (FOR UPDATE)
+        [[{ country: 'Nigeria' }]],                               // validateBalanceForType: country
+        [[{ annual_hours: 160, monthly_accrual_hours: 13.33 }]],  // validateBalanceForType: config
+        [[{ used_hours: 0 }]],                                    // validateBalanceForType: usedHours
+        [[{ remaining_hours: 100 }]],                             // validateBalanceForType: balance (accrual)
         [{ affectedRows: 1 }],   // UPDATE leaves
         [{ affectedRows: 1 }],   // UPDATE leave_balances
         [{ insertId: 1 }],       // INSERT transaction
@@ -687,14 +690,19 @@ beforeEach(() => {
       queueMocks(conn, [
         [[reviewedLeave]],
         [multiDurations],
-        [[{ id: 5, remaining_hours: 80 }]],
-        [[{ id: 6, remaining_hours: 40 }]],
-        [[{ country: 'Nigeria' }]],
-        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
-        [[{ used_hours: 0 }]],
-        [[{ country: 'Nigeria' }]],
-        [[{ annual_hours: 80, monthly_accrual_hours: null }]],
-        [[{ used_hours: 0 }]],
+        [[{ country: 'Nigeria' }]],                               // staffCountry (once, before type loop)
+        [[{ monthly_accrual_hours: 13.33 }]],                      // isAccrual check — lt-uid-001
+        [[{ id: 5, remaining_hours: 80 }]],                        // balance row — lt-uid-001
+        [[{ monthly_accrual_hours: 6.67 }]],                       // isAccrual check — lt-uid-002
+        [[{ id: 6, remaining_hours: 40 }]],                        // balance row — lt-uid-002
+        [[{ country: 'Nigeria' }]],                                // validateBalanceForType — lt-uid-001: country
+        [[{ annual_hours: 160, monthly_accrual_hours: 13.33 }]],   // validateBalanceForType — lt-uid-001: config
+        [[{ used_hours: 0 }]],                                     // validateBalanceForType — lt-uid-001: usedHours
+        [[{ remaining_hours: 80 }]],                               // validateBalanceForType — lt-uid-001: balance
+        [[{ country: 'Nigeria' }]],                                // validateBalanceForType — lt-uid-002: country
+        [[{ annual_hours: 80, monthly_accrual_hours: 6.67 }]],     // validateBalanceForType — lt-uid-002: config
+        [[{ used_hours: 0 }]],                                     // validateBalanceForType — lt-uid-002: usedHours
+        [[{ remaining_hours: 40 }]],                               // validateBalanceForType — lt-uid-002: balance
         [{ affectedRows: 1 }],   // UPDATE leaves
         [{ affectedRows: 1 }],   // UPDATE balance lt-uid-001
         [{ insertId: 1 }],       // INSERT txn lt-uid-001
@@ -717,6 +725,42 @@ beforeEach(() => {
       expect(deductCalls).toHaveLength(2);
     });
 
+    it('approves a fixed-annual (non-accrual) leave type without requiring a seeded balance', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[reviewedLeave]],
+        [[baseDuration]],
+        [[{ country: 'Nigeria' }]],                              // staffCountry
+        [[{ monthly_accrual_hours: null }]],                      // isAccrual check — non-accrual, no balance row required
+        [[{ country: 'Nigeria' }]],                               // validateBalanceForType: country
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],   // validateBalanceForType: config
+        [[{ used_hours: 0 }]],                                    // validateBalanceForType: usedHours (no balance lookup needed)
+        [{ affectedRows: 1 }],   // UPDATE leaves
+        [[reviewedLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[{ email: 'hr@mc.org' }]],
+        [[{ full_name: 'John Doe' }]],
+      ]);
+
+      const service = await buildService(conn);
+      const result = await service.approve(1, 'sup@mc.org');
+
+      expect(result.id).toBe(1);
+      expect(conn.commit).toHaveBeenCalled();
+
+      const balanceLookup = conn.query.mock.calls.find(
+        (c) => (c[0] as string).includes('FROM   leave_balances'),
+      );
+      expect(balanceLookup).toBeUndefined();
+
+      const deductCall = conn.query.mock.calls.find(
+        (c) => (c[0] as string).includes('used_hours = used_hours +'),
+      );
+      expect(deductCall).toBeUndefined();
+    });
+
     it('throws BadRequestException when leave is not Reviewed', async () => {
       const conn = makeConn();
       conn.query.mockResolvedValueOnce([[baseLeave]]);
@@ -730,6 +774,8 @@ beforeEach(() => {
       queueMocks(conn, [
         [[reviewedLeave]],
         [[baseDuration]],
+        [[{ country: 'Nigeria' }]],                          // staffCountry
+        [[{ monthly_accrual_hours: 13.33 }]],                 // isAccrual check — accrual type
         [[]], // no balance row
       ]);
 
@@ -743,6 +789,8 @@ beforeEach(() => {
       queueMocks(conn, [
         [[reviewedLeave]],
         [[baseDuration]],
+        [[{ country: 'Nigeria' }]],                          // staffCountry
+        [[{ monthly_accrual_hours: 13.33 }]],                 // isAccrual check — accrual type
         [[{ id: 5, remaining_hours: 4 }]],
       ]);
 
