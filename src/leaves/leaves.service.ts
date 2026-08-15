@@ -873,10 +873,33 @@ export class LeavesService {
 
       await conn.beginTransaction();
 
+      const [[staffRow]] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT country FROM employee WHERE staff_id = ?`,
+        [leave.staff_id],
+      );
+      const staffCountry = staffRow?.country as string | undefined;
+
       const sortedTypeIds = [...breakdown.keys()].sort();
       const balanceMap = new Map<string, { id: number; remaining: number }>();
 
+      // Only accrual leave types (e.g. Annual Leave, which carries balance
+      // over between years) have a persistent leave_balances row to lock and
+      // deduct from. Fixed-annual types (Paternity, Sick, Education, ...)
+      // have no carryover, so their availability is computed live in
+      // validateBalanceForType() from leave_type_country_config.annual_hours
+      // — they never get seeded and shouldn't be required to be.
       for (const leaveTypeId of sortedTypeIds) {
+        const [configRows] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT monthly_accrual_hours
+           FROM   leave_type_country_config
+           WHERE  leave_type_id = ? AND country = ?`,
+          [leaveTypeId, staffCountry],
+        );
+        const isAccrual =
+          configRows.length > 0 && configRows[0].monthly_accrual_hours != null;
+
+        if (!isAccrual) continue;
+
         const [balanceRows] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT id, remaining_hours
            FROM   leave_balances
@@ -899,11 +922,11 @@ export class LeavesService {
       }
 
       for (const [leaveTypeId, { name, hours }] of breakdown) {
-        const { remaining } = balanceMap.get(leaveTypeId)!;
-        if (remaining < hours) {
+        const accrualBalance = balanceMap.get(leaveTypeId);
+        if (accrualBalance && accrualBalance.remaining < hours) {
           throw new BadRequestException(
             `Insufficient balance for "${name}". ` +
-              `Required: ${hours} hrs, Available: ${remaining.toFixed(2)} hrs`,
+              `Required: ${hours} hrs, Available: ${accrualBalance.remaining.toFixed(2)} hrs`,
           );
         }
         await this.validateBalanceForType(
@@ -922,7 +945,10 @@ export class LeavesService {
       );
 
       for (const [leaveTypeId, { name, hours }] of breakdown) {
-        const { id: balanceId } = balanceMap.get(leaveTypeId)!;
+        const accrualBalance = balanceMap.get(leaveTypeId);
+        if (!accrualBalance) continue; // fixed-annual types: nothing to decrement
+
+        const { id: balanceId } = accrualBalance;
 
         await conn.query(
           `UPDATE leave_balances
