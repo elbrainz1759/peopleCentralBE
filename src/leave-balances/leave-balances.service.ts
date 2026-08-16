@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   BadRequestException,
   ConflictException,
+  NotFoundException,
   Inject,
 } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
@@ -683,6 +684,111 @@ export class LeaveBalancesService {
       );
       return rows;
     } catch (err) {
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PATCH /leave-balances/:id
+  // Corrects a seeded total. Preserves used_hours and shifts remaining_hours
+  // by the same delta so total = used + remaining always holds.
+  // ---------------------------------------------------------------------------
+  async update(
+    id: number,
+    totalHours: number,
+    user: RequestUser,
+  ): Promise<LeaveBalance> {
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT * FROM leave_balances WHERE id = ? FOR UPDATE`,
+        [id],
+      );
+      if (!rows.length) {
+        throw new NotFoundException(`Leave balance with id ${id} not found`);
+      }
+      const balance = rows[0] as LeaveBalance;
+
+      const delta = totalHours - Number(balance.total_hours);
+      const newRemaining = Number(balance.remaining_hours) + delta;
+      if (newRemaining < 0) {
+        throw new BadRequestException(
+          `New total (${totalHours}) is less than hours already used ` +
+            `(${balance.used_hours}). Remaining balance cannot go negative.`,
+        );
+      }
+
+      await conn.query(
+        `UPDATE leave_balances SET total_hours = ?, remaining_hours = ? WHERE id = ?`,
+        [totalHours, newRemaining, id],
+      );
+
+      if (delta !== 0) {
+        await conn.query(
+          `INSERT INTO leave_balance_transactions
+             (unique_id, balance_id, staff_id, leave_type_id, leave_id, type, hours, note, created_by)
+           VALUES (?, ?, ?, ?, NULL, ?, ?, 'HR balance correction', ?)`,
+          [
+            randomBytes(16).toString('hex'),
+            id,
+            balance.staff_id,
+            balance.leave_type_id,
+            delta > 0 ? 'credit' : 'debit',
+            Math.abs(delta),
+            user.email || 'System',
+          ],
+        );
+      }
+
+      await conn.commit();
+
+      const [[updated]] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT * FROM leave_balances WHERE id = ?`,
+        [id],
+      );
+      return updated as LeaveBalance;
+    } catch (err) {
+      await conn.rollback();
+      if (err instanceof NotFoundException || err instanceof BadRequestException)
+        throw err;
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // DELETE /leave-balances/:id
+  // Only untouched balances (used_hours = 0) can be removed — once a leave
+  // has been approved against a balance, deleting it would orphan the
+  // transaction history and the approved leave's deduction record.
+  // ---------------------------------------------------------------------------
+  async remove(id: number): Promise<{ id: number }> {
+    const conn = await this.pool.getConnection();
+    try {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT id, used_hours FROM leave_balances WHERE id = ?`,
+        [id],
+      );
+      if (!rows.length) {
+        throw new NotFoundException(`Leave balance with id ${id} not found`);
+      }
+      if (Number(rows[0].used_hours) > 0) {
+        throw new BadRequestException(
+          `Cannot delete a balance that already has hours used against it ` +
+            `(${rows[0].used_hours} hrs). Reject or cancel the related leave first.`,
+        );
+      }
+
+      await conn.query(`DELETE FROM leave_balances WHERE id = ?`, [id]);
+      return { id };
+    } catch (err) {
+      if (err instanceof NotFoundException || err instanceof BadRequestException)
+        throw err;
       throw new InternalServerErrorException(err);
     } finally {
       conn.release();

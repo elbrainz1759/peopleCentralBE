@@ -166,9 +166,9 @@ describe('LeavesController', () => {
       const reviewed = { ...mockLeave, status: 'Reviewed' as const };
       mockLeavesService.review.mockResolvedValue(reviewed);
 
-      const result = await controller.review(1, mockReq() as Request);
+      const result = await controller.review(1, {}, mockReq() as Request);
 
-      expect(mockLeavesService.review).toHaveBeenCalledWith(1, mockUser.email);
+      expect(mockLeavesService.review).toHaveBeenCalledWith(1, mockUser.email, undefined);
       expect(result).toEqual(reviewed);
     });
 
@@ -177,13 +177,13 @@ describe('LeavesController', () => {
         new BadRequestException('Only Pending leaves can be reviewed'),
       );
 
-      await expect(controller.review(1, mockReq() as Request)).rejects.toThrow(BadRequestException);
+      await expect(controller.review(1, {}, mockReq() as Request)).rejects.toThrow(BadRequestException);
     });
 
     it('propagates NotFoundException', async () => {
       mockLeavesService.review.mockRejectedValue(new NotFoundException('Leave with id 999 not found'));
 
-      await expect(controller.review(999, mockReq() as Request)).rejects.toThrow(NotFoundException);
+      await expect(controller.review(999, {}, mockReq() as Request)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -194,9 +194,9 @@ describe('LeavesController', () => {
       const approved = { ...mockLeave, status: 'Approved' as const };
       mockLeavesService.approve.mockResolvedValue(approved);
 
-      const result = await controller.approve(1, mockReq() as Request);
+      const result = await controller.approve(1, {}, mockReq() as Request);
 
-      expect(mockLeavesService.approve).toHaveBeenCalledWith(1, mockUser.email);
+      expect(mockLeavesService.approve).toHaveBeenCalledWith(1, mockUser.email, undefined);
       expect(result).toEqual(approved);
     });
 
@@ -205,7 +205,7 @@ describe('LeavesController', () => {
         new BadRequestException('Only Reviewed leaves can be approved'),
       );
 
-      await expect(controller.approve(1, mockReq() as Request)).rejects.toThrow(BadRequestException);
+      await expect(controller.approve(1, {}, mockReq() as Request)).rejects.toThrow(BadRequestException);
     });
 
     it('propagates BadRequestException for insufficient balance', async () => {
@@ -213,13 +213,13 @@ describe('LeavesController', () => {
         new BadRequestException('Insufficient leave balance'),
       );
 
-      await expect(controller.approve(1, mockReq() as Request)).rejects.toThrow(BadRequestException);
+      await expect(controller.approve(1, {}, mockReq() as Request)).rejects.toThrow(BadRequestException);
     });
 
     it('propagates NotFoundException', async () => {
       mockLeavesService.approve.mockRejectedValue(new NotFoundException('Leave with id 999 not found'));
 
-      await expect(controller.approve(999, mockReq() as Request)).rejects.toThrow(NotFoundException);
+      await expect(controller.approve(999, {}, mockReq() as Request)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -230,9 +230,9 @@ describe('LeavesController', () => {
       const rejected = { ...mockLeave, status: 'Rejected' as const };
       mockLeavesService.reject.mockResolvedValue(rejected);
 
-      const result = await controller.reject(1, mockReq() as Request);
+      const result = await controller.reject(1, {}, mockReq() as Request);
 
-      expect(mockLeavesService.reject).toHaveBeenCalledWith(1, mockUser.email);
+      expect(mockLeavesService.reject).toHaveBeenCalledWith(1, mockUser.email, undefined);
       expect(result).toEqual(rejected);
     });
 
@@ -241,13 +241,13 @@ describe('LeavesController', () => {
         new BadRequestException('Only Pending, Reviewed, or Approved leaves can be rejected'),
       );
 
-      await expect(controller.reject(1, mockReq() as Request)).rejects.toThrow(BadRequestException);
+      await expect(controller.reject(1, {}, mockReq() as Request)).rejects.toThrow(BadRequestException);
     });
 
     it('propagates NotFoundException', async () => {
       mockLeavesService.reject.mockRejectedValue(new NotFoundException('Leave with id 999 not found'));
 
-      await expect(controller.reject(999, mockReq() as Request)).rejects.toThrow(NotFoundException);
+      await expect(controller.reject(999, {}, mockReq() as Request)).rejects.toThrow(NotFoundException);
     });
   });
 

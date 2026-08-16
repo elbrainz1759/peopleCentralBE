@@ -34,10 +34,13 @@ export interface Leave {
   created_at: Date;
   reviewed_by?: string;
   date_reviewed?: Date;
+  review_comments?: string;
   approved_by?: string;
   date_approved?: Date;
+  approval_comments?: string;
   rejected_by?: string;
   date_rejected?: Date;
+  rejection_comments?: string;
   cancelled_by?: string;
   date_cancelled?: Date;
   durations?: LeaveDuration[];
@@ -123,6 +126,7 @@ function msgReviewed(
   startDate: string,
   endDate: string,
   reviewedBy: string,
+  comments?: string,
 ): string {
   return (
     `The leave request for ${staffName} has been reviewed by HR.\n\n` +
@@ -130,6 +134,7 @@ function msgReviewed(
     `Total hours: ${totalHours} hrs\n` +
     `Leave types:\n${fmtLeaveTypeBreakdown(breakdown)}\n` +
     `Reviewed by: ${reviewedBy}\n` +
+    (comments ? `Comments   : ${comments}\n` : '') +
     `\nThe request is now awaiting supervisor approval.`
   );
 }
@@ -141,6 +146,7 @@ function msgApproved(
   startDate: string,
   endDate: string,
   approvedBy: string,
+  comments?: string,
 ): string {
   return (
     `The leave request for ${staffName} has been approved.\n\n` +
@@ -148,6 +154,7 @@ function msgApproved(
     `Total hours: ${totalHours} hrs\n` +
     `Leave types:\n${fmtLeaveTypeBreakdown(breakdown)}\n` +
     `Approved by: ${approvedBy}\n` +
+    (comments ? `Comments   : ${comments}\n` : '') +
     `\nPlease ensure your handover is complete before your leave begins.`
   );
 }
@@ -159,6 +166,7 @@ function msgRejected(
   startDate: string,
   endDate: string,
   rejectedBy: string,
+  comments?: string,
 ): string {
   return (
     `The leave request for ${staffName} has been rejected.\n\n` +
@@ -166,6 +174,7 @@ function msgRejected(
     `Total hours: ${totalHours} hrs\n` +
     `Leave types:\n${fmtLeaveTypeBreakdown(breakdown)}\n` +
     `Rejected by: ${rejectedBy}\n` +
+    (comments ? `Comments   : ${comments}\n` : '') +
     `\nPlease contact HR for further details.`
   );
 }
@@ -799,7 +808,11 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/review  (HR)
   // ---------------------------------------------------------------------------
-  async review(id: number, reviewedBy: string): Promise<Leave> {
+  async review(
+    id: number,
+    reviewedBy: string,
+    comments?: string,
+  ): Promise<Leave> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
@@ -817,8 +830,8 @@ export class LeavesService {
       }
 
       await conn.query(
-        `UPDATE leaves SET status = 'Reviewed', reviewed_by = ?, date_reviewed = NOW() WHERE id = ?`,
-        [reviewedBy, id],
+        `UPDATE leaves SET status = 'Reviewed', reviewed_by = ?, date_reviewed = NOW(), review_comments = ? WHERE id = ?`,
+        [reviewedBy, comments ?? null, id],
       );
 
       const updated = await this.findOne(id);
@@ -839,6 +852,7 @@ export class LeavesService {
           startDate,
           endDate,
           reviewedBy,
+          comments,
         );
         const mailOpts = {
           message,
@@ -881,7 +895,11 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/approve  (Supervisor)
   // ---------------------------------------------------------------------------
-  async approve(id: number, approvedBy: string): Promise<Leave> {
+  async approve(
+    id: number,
+    approvedBy: string,
+    comments?: string,
+  ): Promise<Leave> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
@@ -980,8 +998,8 @@ export class LeavesService {
       }
 
       await conn.query(
-        `UPDATE leaves SET status = 'Approved', approved_by = ?, date_approved = NOW() WHERE id = ?`,
-        [approvedBy, id],
+        `UPDATE leaves SET status = 'Approved', approved_by = ?, date_approved = NOW(), approval_comments = ? WHERE id = ?`,
+        [approvedBy, comments ?? null, id],
       );
 
       for (const [leaveTypeId, { name, hours }] of breakdown) {
@@ -1035,6 +1053,7 @@ export class LeavesService {
           startDate,
           endDate,
           approvedBy,
+          comments,
         );
         const mailOpts = {
           message,
@@ -1073,7 +1092,11 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/reject
   // ---------------------------------------------------------------------------
-  async reject(id: number, rejectedBy: string): Promise<Leave> {
+  async reject(
+    id: number,
+    rejectedBy: string,
+    comments?: string,
+  ): Promise<Leave> {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
@@ -1093,8 +1116,8 @@ export class LeavesService {
       await conn.beginTransaction();
 
       await conn.query(
-        `UPDATE leaves SET status = 'Rejected', rejected_by = ?, date_rejected = NOW() WHERE id = ?`,
-        [rejectedBy, id],
+        `UPDATE leaves SET status = 'Rejected', rejected_by = ?, date_rejected = NOW(), rejection_comments = ? WHERE id = ?`,
+        [rejectedBy, comments ?? null, id],
       );
 
       if (leave.status === 'Approved') {
@@ -1168,6 +1191,7 @@ export class LeavesService {
           startDate,
           endDate,
           rejectedBy,
+          comments,
         );
         const mailOpts = {
           message,

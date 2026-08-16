@@ -19,6 +19,7 @@ import { LeavesService } from './leaves.service';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { UpdateLeaveDto } from './dto/update-leave.dto';
 import { CancelLeaveDto } from './dto/cancel-leave.dto';
+import { LeaveActionDto } from './dto/leave-action.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 import type { Request } from 'express';
@@ -97,27 +98,39 @@ export class LeavesController {
   // PATCH /leaves/:id/review  (HR)
   // ---------------------------------------------------------------------------
   @Patch(':id/review')
-  review(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+  review(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: LeaveActionDto,
+    @Req() req: Request,
+  ) {
     const user = req.user as RequestUser;
-    return this.leavesService.review(id, user.email);
+    return this.leavesService.review(id, user.email, dto.comments);
   }
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/approve  (Supervisor)
   // ---------------------------------------------------------------------------
   @Patch(':id/approve')
-  approve(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+  approve(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: LeaveActionDto,
+    @Req() req: Request,
+  ) {
     const user = req.user as RequestUser;
-    return this.leavesService.approve(id, user.email);
+    return this.leavesService.approve(id, user.email, dto.comments);
   }
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/reject  (HR or Supervisor)
   // ---------------------------------------------------------------------------
   @Patch(':id/reject')
-  reject(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
+  reject(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: LeaveActionDto,
+    @Req() req: Request,
+  ) {
     const user = req.user as RequestUser;
-    return this.leavesService.reject(id, user.email);
+    return this.leavesService.reject(id, user.email, dto.comments);
   }
 
   // ---------------------------------------------------------------------------

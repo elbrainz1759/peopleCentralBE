@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -14,6 +16,7 @@ import { LeaveBalancesService } from './leave-balances.service';
 import { BulkUploadLeaveBalanceDto } from './dto/bulk-upload-leave-balance.dto';
 import { AccrueLeaveBalanceDto } from './dto/accrue-leave-balance.dto';
 import { RolloverLeaveBalanceDto } from './dto/rollover-leave-balance.dto';
+import { UpdateLeaveBalanceDto } from './dto/update-leave-balance.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 import type { Request } from 'express';
 
@@ -100,5 +103,23 @@ export class LeaveBalancesController {
       leaveTypeId,
       year ? Number(year) : undefined,
     );
+  }
+
+  // PATCH /leave-balances/:id
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateLeaveBalanceDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as RequestUser;
+    return this.leaveBalancesService.update(id, dto.totalHours, user);
+  }
+
+  // DELETE /leave-balances/:id
+  @Delete(':id')
+  @HttpCode(HttpStatus.OK)
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.leaveBalancesService.remove(id);
   }
 }
