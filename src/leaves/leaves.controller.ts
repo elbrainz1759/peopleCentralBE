@@ -17,6 +17,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { LeavesService } from './leaves.service';
 import { CreateLeaveDto } from './dto/create-leave.dto';
+import { UpdateLeaveDto } from './dto/update-leave.dto';
 import { CancelLeaveDto } from './dto/cancel-leave.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
@@ -79,6 +80,17 @@ export class LeavesController {
   @Get(':id/cancellation')
   findCancellation(@Param('id', ParseIntPipe) id: number) {
     return this.leavesService.findCancellation(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // PATCH /leaves/:id  (HR edit)
+  // ---------------------------------------------------------------------------
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateLeaveDto,
+  ) {
+    return this.leavesService.update(id, dto.reason);
   }
 
   // ---------------------------------------------------------------------------

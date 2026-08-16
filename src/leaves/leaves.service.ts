@@ -757,6 +757,46 @@ export class LeavesService {
   }
 
   // ---------------------------------------------------------------------------
+  // PATCH /leaves/:id  (HR edit)
+  // ---------------------------------------------------------------------------
+  async update(id: number, reason?: string): Promise<Leave> {
+    const conn = await this.pool.getConnection();
+    try {
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT * FROM leaves WHERE id = ?',
+        [id],
+      );
+      if (!rows.length)
+        throw new NotFoundException(`Leave with id ${id} not found`);
+
+      const leave = rows[0] as Leave;
+
+      if (!['Pending', 'Reviewed'].includes(leave.status)) {
+        throw new BadRequestException(
+          `Only Pending or Reviewed leaves can be edited. Current status: ${leave.status}`,
+        );
+      }
+
+      if (reason !== undefined) {
+        await conn.query('UPDATE leaves SET reason = ? WHERE id = ?', [
+          reason,
+          id,
+        ]);
+      }
+
+      return this.findOne(id);
+    } catch (err: unknown) {
+      if (err instanceof NotFoundException || err instanceof BadRequestException)
+        throw err;
+      throw new InternalServerErrorException(
+        err instanceof Error ? err.message : undefined,
+      );
+    } finally {
+      conn.release();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/review  (HR)
   // ---------------------------------------------------------------------------
   async review(id: number, reviewedBy: string): Promise<Leave> {

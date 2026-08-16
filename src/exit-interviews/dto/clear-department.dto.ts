@@ -1,8 +1,13 @@
 import { IsString, IsIn, IsArray, IsInt, IsOptional } from 'class-validator';
 
 export class ClearDepartmentDto {
-  @IsIn(['Operations', 'Finance', 'HR'])
-  department: 'Operations' | 'Finance' | 'HR' | 'Pending' = 'Operations';
+  @IsIn(['Supervisor', 'Operations', 'Finance', 'HR', 'HR_Director'])
+  department:
+    | 'Supervisor'
+    | 'Operations'
+    | 'Finance'
+    | 'HR'
+    | 'HR_Director' = 'Operations';
 
   @IsArray()
   @IsInt({ each: true })

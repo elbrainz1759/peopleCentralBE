@@ -1,13 +1,13 @@
-import { IsInt, IsNotEmpty, IsNumber, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsNumber, IsString, Min } from 'class-validator';
 
 export class CreateLeaveBalanceDto {
   @IsInt()
   @IsNotEmpty()
   staffId: number;
 
-  @IsInt()
+  @IsString()
   @IsNotEmpty()
-  leaveTypeId: number;
+  leaveTypeId: string;
 
   @IsNumber()
   @Min(0)
