@@ -314,4 +314,42 @@ export class DataTrackerService {
       [tracker_id, days_before],
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Sends today's due reminders and marks each one sent — but only once every
+  // recipient on that reminder actually received it. A partial failure (e.g.
+  // SMTP outage mid-run) is left unmarked so it retries on the next run;
+  // there's no per-recipient tracking, so a partial failure has to be treated
+  // as a full retry.
+  //
+  // Called by the daily @Cron job (data-tracker.scheduler.ts) and also
+  // exposed as POST /data-tracker/cron/trigger for manual/ops use.
+  // ---------------------------------------------------------------------------
+  async runDueNotifications(): Promise<{
+    triggered: number;
+    sent: number;
+    items: DueNotificationRow[];
+  }> {
+    const due = await this.getDueNotifications();
+    let sent = 0;
+
+    for (const item of due) {
+      const { failed } = await this.mailService.sendToMany(
+        item.recipient_emails,
+        {
+          subject: `Reminder: "${item.title}" is due soon`,
+          subjectFull: 'Data Tracker Reminder',
+          message: `This is a reminder that "${item.title}" is due on ${item.end_date}. You are receiving this because you are ${item.days_before} days away from the deadline.`,
+          siteName: 'PeopleCentral',
+        },
+      );
+
+      if (failed.length === 0) {
+        await this.markNotificationSent(item.unique_id, item.days_before);
+        sent++;
+      }
+    }
+
+    return { triggered: due.length, sent, items: due };
+  }
 }

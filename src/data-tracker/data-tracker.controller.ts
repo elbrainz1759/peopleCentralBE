@@ -15,14 +15,10 @@ import { CreateDataTrackerDto } from './dto/create-data-tracker.dto';
 import { UpdateDataTrackerDto } from './dto/update-data-tracker.dto';
 import { FindDataTrackerDto } from './dto/find-data-tracker.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
-import { MailService } from 'src/mail/mail.service';
 
 @Controller('data-tracker')
 export class DataTrackerController {
-  constructor(
-    private readonly dataTrackerService: DataTrackerService,
-    private readonly mailService: MailService,
-  ) {}
+  constructor(private readonly dataTrackerService: DataTrackerService) {}
 
   @Post()
   create(@Body() dto: CreateDataTrackerDto, @Req() req: Request) {
@@ -54,36 +50,11 @@ export class DataTrackerController {
     return this.dataTrackerService.remove(unique_id);
   }
 
-  // Called daily by your cron job
+  // Runs automatically daily via DataTrackerScheduler (@Cron). Kept as a
+  // manual endpoint too, for ops use — e.g. re-running after fixing an SMTP
+  // outage without waiting for the next scheduled run.
   @Post('cron/trigger')
-  async triggerNotifications() {
-    const due = await this.dataTrackerService.getDueNotifications();
-    let sent = 0;
-
-    for (const item of due) {
-      const { failed } = await this.mailService.sendToMany(
-        item.recipient_emails,
-        {
-          subject: `Reminder: "${item.title}" is due soon`,
-          subjectFull: 'Data Tracker Reminder',
-          message: `This is a reminder that "${item.title}" is due on ${item.end_date}. You are receiving this because you are ${item.days_before} days away from the deadline.`,
-          siteName: 'PeopleCentral',
-        },
-      );
-
-      // Only mark as sent once every recipient actually received it — if any
-      // failed (e.g. SMTP outage mid-run), leave it unmarked so the next
-      // cron run retries the whole thing. There's no per-recipient tracking,
-      // so a partial failure has to be treated as a full retry.
-      if (failed.length === 0) {
-        await this.dataTrackerService.markNotificationSent(
-          item.unique_id,
-          item.days_before,
-        );
-        sent++;
-      }
-    }
-
-    return { triggered: due.length, sent, items: due };
+  triggerNotifications() {
+    return this.dataTrackerService.runDueNotifications();
   }
 }

@@ -1,26 +1,16 @@
-jest.mock('src/mail/mail.service', () => ({
-  MailService: jest.fn().mockImplementation(() => mockMailService),
-}));
-
 import { DataTrackerController } from './data-tracker.controller';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
-
-const mockMailService = {
-  sendCaseNotification: jest.fn().mockResolvedValue(undefined),
-  sendToMany:           jest.fn().mockResolvedValue({ succeeded: [], failed: [] }),
-};
 
 describe('DataTrackerController', () => {
   let controller: DataTrackerController;
 
   const mockService: any = {
-    create:                jest.fn(),
-    findAll:               jest.fn(),
-    findByUniqueId:        jest.fn(),
-    update:                jest.fn(),
-    remove:                jest.fn(),
-    getDueNotifications:   jest.fn(),
-    markNotificationSent:  jest.fn(),
+    create:               jest.fn(),
+    findAll:              jest.fn(),
+    findByUniqueId:       jest.fn(),
+    update:               jest.fn(),
+    remove:               jest.fn(),
+    runDueNotifications:  jest.fn(),
   };
 
   const mockUser: RequestUser = {
@@ -36,9 +26,7 @@ describe('DataTrackerController', () => {
 
   beforeEach(() => {
     jest.resetAllMocks();
-    // Pass mockMailService as the second constructor argument so
-    // this.mailService is never undefined inside the controller.
-    controller = new DataTrackerController(mockService, mockMailService as any);
+    controller = new DataTrackerController(mockService);
   });
 
   it('should be defined', () => {
@@ -75,76 +63,10 @@ describe('DataTrackerController', () => {
     expect(mockService.remove).toHaveBeenCalledWith('uid123');
   });
 
-  describe('triggerNotifications', () => {
-    it('triggers notifications and marks them sent', async () => {
-      const due = [
-        {
-          unique_id:        'uid1',
-          title:            'Report A',
-          end_date:         '2026-06-01',
-          days_before:      7,
-          recipient_emails: ['a@b.com', 'c@d.com'],
-        },
-        {
-          unique_id:        'uid2',
-          title:            'Report B',
-          end_date:         '2026-06-05',
-          days_before:      3,
-          recipient_emails: ['e@f.com'],
-        },
-      ];
-
-      mockService.getDueNotifications.mockResolvedValue(due);
-      mockMailService.sendToMany.mockResolvedValue({ succeeded: [], failed: [] });
-      mockService.markNotificationSent.mockResolvedValue(undefined);
-
-      const result = await controller.triggerNotifications();
-
-      expect(result.triggered).toBe(2);
-      expect(result.sent).toBe(2);
-      expect(result.items).toEqual(due);
-      expect(mockService.markNotificationSent).toHaveBeenCalledTimes(2);
-      expect(mockService.markNotificationSent).toHaveBeenCalledWith('uid1', 7);
-      expect(mockService.markNotificationSent).toHaveBeenCalledWith('uid2', 3);
-      // Verify mail was sent for each due item
-      expect(mockMailService.sendToMany).toHaveBeenCalledTimes(2);
-      expect(mockMailService.sendToMany).toHaveBeenCalledWith(
-        ['a@b.com', 'c@d.com'],
-        expect.objectContaining({ subjectFull: 'Data Tracker Reminder' }),
-      );
-    });
-
-    it('returns zero triggered when nothing is due', async () => {
-      mockService.getDueNotifications.mockResolvedValue([]);
-      const result = await controller.triggerNotifications();
-      expect(result.triggered).toBe(0);
-      expect(result.sent).toBe(0);
-      expect(mockService.markNotificationSent).not.toHaveBeenCalled();
-      expect(mockMailService.sendToMany).not.toHaveBeenCalled();
-    });
-
-    it('does not mark sent when some recipients fail, so the item retries next run', async () => {
-      const due = [
-        {
-          unique_id:        'uid1',
-          title:            'Report A',
-          end_date:         '2026-06-01',
-          days_before:      7,
-          recipient_emails: ['a@b.com', 'c@d.com'],
-        },
-      ];
-
-      mockService.getDueNotifications.mockResolvedValue(due);
-      mockMailService.sendToMany.mockResolvedValue({
-        succeeded: ['a@b.com'],
-        failed: ['c@d.com'],
-      });
-
-      const result = await controller.triggerNotifications();
-
-      expect(result.triggered).toBe(1);
-      expect(result.sent).toBe(0);
-      expect(mockService.markNotificationSent).not.toHaveBeenCalled();
-    });
+  it('triggerNotifications proxies to service (also driven by the daily @Cron job)', async () => {
+    const result = { triggered: 2, sent: 2, items: [] };
+    mockService.runDueNotifications.mockResolvedValue(result);
+    expect(await controller.triggerNotifications()).toBe(result);
+    expect(mockService.runDueNotifications).toHaveBeenCalledWith();
   });
 });

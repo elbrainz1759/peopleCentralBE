@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -32,6 +33,7 @@ import { S3Module } from './s3/s3.module';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     PrometheusModule.register({
       defaultMetrics: {
         enabled: true, // auto-collects Node.js memory, CPU, event loop lag
