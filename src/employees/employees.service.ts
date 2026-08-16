@@ -1,6 +1,7 @@
 import {
   Injectable,
   Inject,
+  Logger,
   NotFoundException,
   ConflictException,
   InternalServerErrorException,
@@ -12,6 +13,7 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { randomBytes } from 'crypto';
 import { FindEmployeesDto } from './dto/find-employee.dto';
 import { ensureExists } from '../utils/check-exit.util';
+import { MailService } from '../mail/mail.service';
 
 export interface EmployeeRow extends mysql.RowDataPacket {
   id: number;
@@ -34,7 +36,40 @@ interface CountResult extends mysql.RowDataPacket {
 
 @Injectable()
 export class EmployeeService {
-  constructor(@Inject('MYSQL_POOL') private readonly pool: mysql.Pool) {}
+  private readonly logger = new Logger(EmployeeService.name);
+
+  constructor(
+    @Inject('MYSQL_POOL') private readonly pool: mysql.Pool,
+    private readonly mailService: MailService,
+  ) {}
+
+  // Emails of active users holding a given role (case-insensitive)
+  private async resolveRoleEmails(role: string): Promise<string[]> {
+    const [rows] = await this.pool.query<mysql.RowDataPacket[]>(
+      `SELECT email FROM users WHERE LOWER(role) = LOWER(?) AND status = 'Active'`,
+      [role],
+    );
+    return rows.map((r) => r.email as string);
+  }
+
+  private async notifyHR(subjectFull: string, message: string) {
+    try {
+      const hrEmails = await this.resolveRoleEmails('HR');
+      if (hrEmails.length) {
+        await this.mailService.sendToMany(hrEmails, {
+          message,
+          subject: 'PeopleCentral Staff Registration',
+          subjectFull,
+          siteName: 'PeopleCentral',
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        'Failed to send HR registration notification',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
 
   async create(createEmployeeDto: CreateEmployeeDto) {
     const {
@@ -60,77 +95,82 @@ export class EmployeeService {
 
     const checks: Promise<void>[] = [];
 
-    try {
-      if (departmentId) {
-        checks.push(
-          ensureExists(this.pool, 'departments', departmentId, 'Department'),
-        );
-      }
-      if (programId) {
-        checks.push(ensureExists(this.pool, 'programs', programId, 'Program'));
-      }
-      if (countryId) {
-        checks.push(ensureExists(this.pool, 'countries', countryId, 'Country'));
-      }
-      if (locationId) {
-        checks.push(
-          ensureExists(this.pool, 'locations', locationId, 'Location'),
-        );
-      }
+    if (departmentId) {
+      checks.push(
+        ensureExists(this.pool, 'departments', departmentId, 'Department'),
+      );
+    }
+    if (programId) {
+      checks.push(ensureExists(this.pool, 'programs', programId, 'Program'));
+    }
+    if (countryId) {
+      checks.push(ensureExists(this.pool, 'countries', countryId, 'Country'));
+    }
+    if (locationId) {
+      checks.push(ensureExists(this.pool, 'locations', locationId, 'Location'));
+    }
 
-      await Promise.all(checks);
+    await Promise.all(checks);
 
-      // If the employee already exists (e.g. seeded via a staff import),
-      // registering just updates their record instead of failing on the
-      // duplicate email/staff_id constraint. Status and supervisor are left
-      // untouched — this form doesn't collect either.
-      const [existingRows] = await this.pool.query<EmployeeRow[]>(
-        'SELECT unique_id FROM employee WHERE email = ?',
-        [email],
+    // If the employee already exists (e.g. seeded via a staff import),
+    // registering just updates their record instead of failing on the
+    // duplicate email/staff_id constraint. Status and supervisor are left
+    // untouched — this form doesn't collect either.
+    const [existingRows] = await this.pool.query<EmployeeRow[]>(
+      'SELECT unique_id FROM employee WHERE email = ?',
+      [email],
+    );
+
+    if (existingRows.length > 0) {
+      const updated = await this.update(existingRows[0].unique_id, {
+        firstName,
+        lastName,
+        designation,
+        staffId,
+        locationId,
+        departmentId,
+        programId,
+        countryId,
+      });
+
+      await this.notifyHR(
+        'Existing Staff Record Updated via Registration',
+        `${firstName} ${lastName} (staff ID ${staffId}, ${email}) registered and matched an existing employee record. Their details were updated automatically. Please review and add them as a user if appropriate.`,
       );
 
-      if (existingRows.length > 0) {
-        return this.update(existingRows[0].unique_id, {
+      return updated;
+    }
+
+    try {
+      const [result] = await this.pool.query<mysql.ResultSetHeader>(
+        `INSERT INTO employee (status, unique_id, designation, first_name, last_name, staff_id, email, location, department, program, country, created_by)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          'Pending',
+          unique_id,
+          designation,
           firstName,
           lastName,
-          designation,
           staffId,
+          email,
           locationId,
           departmentId,
           programId,
           countryId,
-        });
-      }
+          created_by,
+        ],
+      );
 
-      try {
-        const [result] = await this.pool.query<mysql.ResultSetHeader>(
-          `INSERT INTO employee (status, unique_id, designation, first_name, last_name, staff_id, email, location, department, program, country, created_by)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            'Pending',
-            unique_id,
-            designation,
-            firstName,
-            lastName,
-            staffId,
-            email,
-            locationId,
-            departmentId,
-            programId,
-            countryId,
-            created_by,
-          ],
-        );
+      await this.notifyHR(
+        'New Staff Registration',
+        `${firstName} ${lastName} (staff ID ${staffId}, ${email}) has registered as a new employee and is awaiting approval. Please review and add them as a user.`,
+      );
 
-        return { id: result.insertId, ...createEmployeeDto };
-      } catch (error) {
-        console.error('Create employee error:', error);
-
-        throw new InternalServerErrorException('Failed to create employee');
-      }
+      return { id: result.insertId, ...createEmployeeDto };
     } catch (error) {
-      console.error('Department validation error:', error);
-      return { message: 'Failed to create employee' };
+      console.error('Create employee error:', error);
+
+      throw new InternalServerErrorException('Failed to create employee');
     }
   }
 
