@@ -43,4 +43,32 @@ describe('MailService', () => {
       }),
     );
   });
+
+  describe('sendToMany', () => {
+    it('reports every recipient as succeeded when sendMail resolves', async () => {
+      const result = await service.sendToMany(['a@b.com', 'c@d.com'], {
+        message: 'Test message',
+      });
+
+      expect(result).toEqual({
+        succeeded: ['a@b.com', 'c@d.com'],
+        failed: [],
+      });
+    });
+
+    it('separates succeeded and failed recipients instead of throwing', async () => {
+      mockMailerService.sendMail
+        .mockResolvedValueOnce({})
+        .mockRejectedValueOnce(new Error('SMTP down'));
+
+      const result = await service.sendToMany(['a@b.com', 'c@d.com'], {
+        message: 'Test message',
+      });
+
+      expect(result).toEqual({
+        succeeded: ['a@b.com'],
+        failed: ['c@d.com'],
+      });
+    });
+  });
 });

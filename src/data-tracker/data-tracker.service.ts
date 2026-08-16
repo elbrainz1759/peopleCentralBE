@@ -129,13 +129,21 @@ export class DataTrackerService {
 
       await conn.commit();
 
-      await this.mailService.sendCaseNotification({
-        to: createdBy,
-        subject: 'Notification Setup Successful',
-        subjectFull: 'Your data tracker has been created',
-        message: `Your data tracker has been created successfully.`,
-        siteName: 'PeopleCentral',
-      });
+      try {
+        await this.mailService.sendCaseNotification({
+          to: createdBy,
+          subject: 'Notification Setup Successful',
+          subjectFull: 'Your data tracker has been created',
+          message: `Your data tracker has been created successfully.`,
+          siteName: 'PeopleCentral',
+        });
+      } catch (err) {
+        console.error(
+          `Failed to send data-tracker creation email to ${createdBy}`,
+          err,
+        );
+      }
+
       return this.findByUniqueId(unique_id);
     } catch (error) {
       await conn.rollback();

@@ -52,19 +52,26 @@ export class MailService {
   async sendToMany(
     recipients: string[],
     options: Omit<SendMailOptions, 'to'>,
-  ): Promise<void> {
+  ): Promise<{ succeeded: string[]; failed: string[] }> {
     const results = await Promise.allSettled(
       recipients.map((email) =>
         this.sendCaseNotification({ ...options, to: email }),
       ),
     );
 
+    const succeeded: string[] = [];
+    const failed: string[] = [];
+
     results.forEach((result, index) => {
+      const email = recipients[index];
       if (result.status === 'rejected') {
-        this.logger.error(
-          `Failed for recipient ${recipients[index]}: ${result.reason}`,
-        );
+        this.logger.error(`Failed for recipient ${email}: ${result.reason}`);
+        failed.push(email);
+      } else {
+        succeeded.push(email);
       }
     });
+
+    return { succeeded, failed };
   }
 }

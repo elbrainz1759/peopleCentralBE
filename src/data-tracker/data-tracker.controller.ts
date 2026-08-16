@@ -58,21 +58,32 @@ export class DataTrackerController {
   @Post('cron/trigger')
   async triggerNotifications() {
     const due = await this.dataTrackerService.getDueNotifications();
+    let sent = 0;
 
     for (const item of due) {
-      await this.mailService.sendToMany(item.recipient_emails, {
-        subject: `Reminder: "${item.title}" is due soon`,
-        subjectFull: 'Data Tracker Reminder',
-        message: `This is a reminder that "${item.title}" is due on ${item.end_date}. You are receiving this because you are ${item.days_before} days away from the deadline.`,
-        siteName: 'PeopleCentral',
-      });
-
-      await this.dataTrackerService.markNotificationSent(
-        item.unique_id,
-        item.days_before,
+      const { failed } = await this.mailService.sendToMany(
+        item.recipient_emails,
+        {
+          subject: `Reminder: "${item.title}" is due soon`,
+          subjectFull: 'Data Tracker Reminder',
+          message: `This is a reminder that "${item.title}" is due on ${item.end_date}. You are receiving this because you are ${item.days_before} days away from the deadline.`,
+          siteName: 'PeopleCentral',
+        },
       );
+
+      // Only mark as sent once every recipient actually received it — if any
+      // failed (e.g. SMTP outage mid-run), leave it unmarked so the next
+      // cron run retries the whole thing. There's no per-recipient tracking,
+      // so a partial failure has to be treated as a full retry.
+      if (failed.length === 0) {
+        await this.dataTrackerService.markNotificationSent(
+          item.unique_id,
+          item.days_before,
+        );
+        sent++;
+      }
     }
 
-    return { triggered: due.length, items: due };
+    return { triggered: due.length, sent, items: due };
   }
 }

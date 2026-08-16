@@ -7,7 +7,7 @@ import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 const mockMailService = {
   sendCaseNotification: jest.fn().mockResolvedValue(undefined),
-  sendToMany:           jest.fn().mockResolvedValue(undefined),
+  sendToMany:           jest.fn().mockResolvedValue({ succeeded: [], failed: [] }),
 };
 
 describe('DataTrackerController', () => {
@@ -95,11 +95,13 @@ describe('DataTrackerController', () => {
       ];
 
       mockService.getDueNotifications.mockResolvedValue(due);
+      mockMailService.sendToMany.mockResolvedValue({ succeeded: [], failed: [] });
       mockService.markNotificationSent.mockResolvedValue(undefined);
 
       const result = await controller.triggerNotifications();
 
       expect(result.triggered).toBe(2);
+      expect(result.sent).toBe(2);
       expect(result.items).toEqual(due);
       expect(mockService.markNotificationSent).toHaveBeenCalledTimes(2);
       expect(mockService.markNotificationSent).toHaveBeenCalledWith('uid1', 7);
@@ -116,8 +118,33 @@ describe('DataTrackerController', () => {
       mockService.getDueNotifications.mockResolvedValue([]);
       const result = await controller.triggerNotifications();
       expect(result.triggered).toBe(0);
+      expect(result.sent).toBe(0);
       expect(mockService.markNotificationSent).not.toHaveBeenCalled();
       expect(mockMailService.sendToMany).not.toHaveBeenCalled();
+    });
+
+    it('does not mark sent when some recipients fail, so the item retries next run', async () => {
+      const due = [
+        {
+          unique_id:        'uid1',
+          title:            'Report A',
+          end_date:         '2026-06-01',
+          days_before:      7,
+          recipient_emails: ['a@b.com', 'c@d.com'],
+        },
+      ];
+
+      mockService.getDueNotifications.mockResolvedValue(due);
+      mockMailService.sendToMany.mockResolvedValue({
+        succeeded: ['a@b.com'],
+        failed: ['c@d.com'],
+      });
+
+      const result = await controller.triggerNotifications();
+
+      expect(result.triggered).toBe(1);
+      expect(result.sent).toBe(0);
+      expect(mockService.markNotificationSent).not.toHaveBeenCalled();
     });
   });
 });
