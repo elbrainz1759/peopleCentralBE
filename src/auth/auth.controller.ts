@@ -1,6 +1,5 @@
 import { Controller, Post, Body, Get, Req } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RequestResetDto } from './dto/requestReset.dto';
 import { ResetPasswordDto } from './dto/resetPassword.dto';
@@ -25,12 +24,6 @@ interface RequestMetadata {
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
-
-  @Public()
-  @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto.email, dto.password, dto.role);
-  }
 
   @Post('approve')
   approveUser(@Body() dto: ApproveUserDto) {

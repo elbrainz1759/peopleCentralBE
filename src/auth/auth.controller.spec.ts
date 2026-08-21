@@ -4,7 +4,6 @@ describe('AuthController', () => {
   let controller: AuthController;
 
   const mockAuthService: any = {
-    register: jest.fn(),
     login: jest.fn(),
     refresh: jest.fn(),
     logout: jest.fn(),
@@ -19,24 +18,6 @@ describe('AuthController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
-  });
-
-  it('register proxies to service', async () => {
-    mockAuthService.register.mockResolvedValue({ message: 'registered' });
-
-    expect(
-      await controller.register({
-        email: 'a@b.com',
-        password: 'x',
-        role: 'User',
-      } as any),
-    ).toEqual({ message: 'registered' });
-
-    expect(mockAuthService.register).toHaveBeenCalledWith(
-      'a@b.com',
-      'x',
-      'User',
-    );
   });
 
   it('login proxies to service', async () => {

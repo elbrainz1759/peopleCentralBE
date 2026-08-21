@@ -61,54 +61,6 @@ export class AuthService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  async register(email: string, password: string, role: string = 'User') {
-    //ensure data is not empty and valid
-    if (!email || !password || !role) {
-      throw new BadRequestException('Email and password are required');
-    }
-
-    // validating role
-    const [roleRows] = await this.pool.query<UserRow[]>(
-      'SELECT name FROM roles WHERE name = ?',
-      [role],
-    );
-    if (roleRows.length === 0) {
-      throw new BadRequestException('Invalid role');
-    }
-    try {
-      //Check if employee exists in employees table
-      const [empRows] = await this.pool.query<UserRow[]>(
-        'SELECT id FROM employee WHERE email = ?',
-        [email],
-      );
-      if (empRows.length === 0) {
-        throw new BadRequestException('No employee found with this email');
-      }
-      const [rows] = await this.pool.query<UserRow[]>(
-        'SELECT id FROM users WHERE email = ?',
-        [email],
-      );
-
-      if (rows.length > 0) {
-        throw new BadRequestException('Email already exists');
-      }
-
-      const hashed = await bcrypt.hash(password, 10);
-
-      const unique_id: string = randomBytes(16).toString('hex');
-
-      await this.pool.query<mysql.ResultSetHeader>(
-        'INSERT INTO users (email, password, role, unique_id, status) VALUES (?, ?, ?, ?, ?)',
-        [email, hashed, role, unique_id, 'Active'],
-      );
-
-      return { message: 'User registered successfully', unique_id };
-    } catch (err) {
-      console.error('Registration error:', err);
-      throw new BadRequestException('Registration failed');
-    }
-  }
-
   async approveUser(
     email: string,
     role: string = 'User',
