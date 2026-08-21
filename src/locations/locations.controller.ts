@@ -17,6 +17,7 @@ import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { Public } from '../decorators/public.decorator';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 
 @Controller('locations')
@@ -24,6 +25,7 @@ export class LocationsController {
   constructor(private readonly locationsService: LocationsService) {}
 
   // POST /locations
+  @Roles('Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateLocationDto, @Req() req: Request) {
@@ -51,12 +53,14 @@ export class LocationsController {
   }
 
   // PATCH /locations/:id
+  @Roles('Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateLocationDto) {
     return this.locationsService.update(id, dto);
   }
 
   // DELETE /locations/:id
+  @Roles('Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {

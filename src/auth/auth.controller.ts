@@ -8,6 +8,7 @@ import { Public } from '../decorators/public.decorator';
 import { RequestMetadata } from '../decorators/requestMetadata.decorator';
 import { ApproveUserDto } from './dto/approveUser.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 interface AuthenticatedRequest extends Request {
   user: {
@@ -25,6 +26,7 @@ interface RequestMetadata {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Roles('HR', 'Superadmin')
   @Post('approve')
   approveUser(@Body() dto: ApproveUserDto) {
     return this.authService.approveUser(

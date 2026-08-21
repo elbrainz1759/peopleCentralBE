@@ -19,6 +19,7 @@ import {
 } from './dto/program.dto';
 import { Public } from '../decorators/public.decorator';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 
 @Controller('programs')
@@ -26,6 +27,7 @@ export class ProgramsController {
   constructor(private readonly programsService: ProgramsService) {}
 
   // POST /programs
+  @Roles('Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateProgramDto, @Req() req: Request) {
@@ -53,12 +55,14 @@ export class ProgramsController {
   }
 
   // PATCH /programs/:id
+  @Roles('Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateProgramDto) {
     return this.programsService.update(id, dto);
   }
 
   // DELETE /programs/:id
+  @Roles('Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {

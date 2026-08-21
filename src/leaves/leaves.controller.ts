@@ -22,6 +22,7 @@ import { CancelLeaveDto } from './dto/cancel-leave.dto';
 import { LeaveActionDto } from './dto/leave-action.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 import multer from 'multer';
 
@@ -86,17 +87,16 @@ export class LeavesController {
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id  (HR edit)
   // ---------------------------------------------------------------------------
+  @Roles('HR', 'Superadmin')
   @Patch(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateLeaveDto,
-  ) {
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLeaveDto) {
     return this.leavesService.update(id, dto.reason);
   }
 
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/review  (HR)
   // ---------------------------------------------------------------------------
+  @Roles('HR', 'Superadmin')
   @Patch(':id/review')
   review(
     @Param('id', ParseIntPipe) id: number,
@@ -117,7 +117,7 @@ export class LeavesController {
     @Req() req: Request,
   ) {
     const user = req.user as RequestUser;
-    return this.leavesService.approve(id, user.email, dto.comments);
+    return this.leavesService.approve(id, user.email, user.role, dto.comments);
   }
 
   // ---------------------------------------------------------------------------
@@ -130,7 +130,7 @@ export class LeavesController {
     @Req() req: Request,
   ) {
     const user = req.user as RequestUser;
-    return this.leavesService.reject(id, user.email, dto.comments);
+    return this.leavesService.reject(id, user.email, user.role, dto.comments);
   }
 
   // ---------------------------------------------------------------------------
@@ -143,6 +143,6 @@ export class LeavesController {
     @Req() req: Request,
   ) {
     const user = req.user as RequestUser;
-    return this.leavesService.cancel(id, user.email, dto.reason);
+    return this.leavesService.cancel(id, user.email, user.role, dto.reason);
   }
 }

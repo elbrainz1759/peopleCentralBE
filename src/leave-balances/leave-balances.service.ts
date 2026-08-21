@@ -753,7 +753,10 @@ export class LeaveBalancesService {
       return updated as LeaveBalance;
     } catch (err) {
       await conn.rollback();
-      if (err instanceof NotFoundException || err instanceof BadRequestException)
+      if (
+        err instanceof NotFoundException ||
+        err instanceof BadRequestException
+      )
         throw err;
       throw new InternalServerErrorException(err);
     } finally {
@@ -787,7 +790,10 @@ export class LeaveBalancesService {
       await conn.query(`DELETE FROM leave_balances WHERE id = ?`, [id]);
       return { id };
     } catch (err) {
-      if (err instanceof NotFoundException || err instanceof BadRequestException)
+      if (
+        err instanceof NotFoundException ||
+        err instanceof BadRequestException
+      )
         throw err;
       throw new InternalServerErrorException(err);
     } finally {

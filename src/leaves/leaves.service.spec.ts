@@ -669,7 +669,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.approve(1, 'sup@mc.org');
+      const result = await service.approve(1, 'sup@mc.org', 'HR');
 
       expect(result.id).toBe(1);
       expect(conn.commit).toHaveBeenCalled();
@@ -717,7 +717,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      await service.approve(1, 'sup@mc.org');
+      await service.approve(1, 'sup@mc.org', 'HR');
 
       const deductCalls = conn.query.mock.calls.filter(
         (c) => (c[0] as string).includes('used_hours = used_hours +'),
@@ -745,7 +745,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.approve(1, 'sup@mc.org');
+      const result = await service.approve(1, 'sup@mc.org', 'HR');
 
       expect(result.id).toBe(1);
       expect(conn.commit).toHaveBeenCalled();
@@ -766,7 +766,7 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[baseLeave]]);
 
       const service = await buildService(conn);
-      await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(BadRequestException);
+      await expect(service.approve(1, 'sup@mc.org', 'HR')).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException when balance record not found', async () => {
@@ -780,7 +780,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(BadRequestException);
+      await expect(service.approve(1, 'sup@mc.org', 'HR')).rejects.toThrow(BadRequestException);
       expect(conn.rollback).toHaveBeenCalled();
     });
 
@@ -795,7 +795,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(BadRequestException);
+      await expect(service.approve(1, 'sup@mc.org', 'HR')).rejects.toThrow(BadRequestException);
       expect(conn.rollback).toHaveBeenCalled();
     });
 
@@ -804,7 +804,7 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[]]);
 
       const service = await buildService(conn);
-      await expect(service.approve(99, 'sup@mc.org')).rejects.toThrow(NotFoundException);
+      await expect(service.approve(99, 'sup@mc.org', 'HR')).rejects.toThrow(NotFoundException);
     });
 
     it('rolls back on unexpected db error', async () => {
@@ -813,10 +813,52 @@ beforeEach(() => {
       conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
-      await expect(service.approve(1, 'sup@mc.org')).rejects.toThrow(
+      await expect(service.approve(1, 'sup@mc.org', 'HR')).rejects.toThrow(
         InternalServerErrorException,
       );
       expect(conn.rollback).toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when the caller is not HR/Superadmin or the assigned supervisor', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'real-sup@mc.org' }]],
+        [[]],
+      ]);
+
+      const service = await buildService(conn);
+      await expect(
+        service.approve(1, 'someone-else@mc.org', 'User'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows the employee\'s actual assigned supervisor to approve', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],
+        [[]],
+        [[baseDuration]],
+        [[{ country: 'Nigeria' }]],
+        [[{ monthly_accrual_hours: null }]],
+        [[{ country: 'Nigeria' }]],
+        [[{ annual_hours: 160, monthly_accrual_hours: null }]],
+        [[{ used_hours: 0 }]],
+        [{ affectedRows: 1 }],
+        [[reviewedLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],
+        [[{ email: 'hr@mc.org' }]],
+        [[{ full_name: 'John Doe' }]],
+      ]);
+
+      const service = await buildService(conn);
+      const result = await service.approve(1, 'sup@mc.org', 'User');
+
+      expect(result.id).toBe(1);
+      expect(conn.commit).toHaveBeenCalled();
     });
   });
 
@@ -837,7 +879,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      await service.reject(1, 'hr@mc.org');
+      await service.reject(1, 'hr@mc.org', 'HR');
 
       expect(conn.commit).toHaveBeenCalled();
       const balanceUpdate = conn.query.mock.calls.find(
@@ -866,7 +908,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      await service.reject(1, 'hr@mc.org');
+      await service.reject(1, 'hr@mc.org', 'HR');
 
       const restoreCall = conn.query.mock.calls.find(
         (c) => (c[0] as string).includes('used_hours = used_hours -'),
@@ -884,7 +926,7 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[{ ...baseLeave, status: 'Cancelled' }]]);
 
       const service = await buildService(conn);
-      await expect(service.reject(1, 'hr@mc.org')).rejects.toThrow(BadRequestException);
+      await expect(service.reject(1, 'hr@mc.org', 'HR')).rejects.toThrow(BadRequestException);
     });
 
     it('throws NotFoundException when leave not found', async () => {
@@ -892,7 +934,7 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[]]);
 
       const service = await buildService(conn);
-      await expect(service.reject(99, 'hr@mc.org')).rejects.toThrow(NotFoundException);
+      await expect(service.reject(99, 'hr@mc.org', 'HR')).rejects.toThrow(NotFoundException);
     });
 
     it('rolls back on unexpected db error', async () => {
@@ -901,10 +943,45 @@ beforeEach(() => {
       conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
-      await expect(service.reject(1, 'hr@mc.org')).rejects.toThrow(
+      await expect(service.reject(1, 'hr@mc.org', 'HR')).rejects.toThrow(
         InternalServerErrorException,
       );
       expect(conn.rollback).toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when the caller is not HR/Superadmin or the assigned supervisor', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[baseLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'real-sup@mc.org' }]],
+        [[]],
+      ]);
+
+      const service = await buildService(conn);
+      await expect(
+        service.reject(1, 'someone-else@mc.org', 'User'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows the employee\'s actual assigned supervisor to reject', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[baseLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],
+        [[]],
+        [{ affectedRows: 1 }],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
+      ]);
+
+      const service = await buildService(conn);
+      await service.reject(1, 'sup@mc.org', 'User');
+
+      expect(conn.commit).toHaveBeenCalled();
     });
   });
 
@@ -926,7 +1003,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.cancel(1, 'staff@mc.org', 'Personal reasons');
+      const result = await service.cancel(1, 'staff@mc.org', 'HR', 'Personal reasons');
 
       expect(result.id).toBe(1);
       expect(conn.commit).toHaveBeenCalled();
@@ -953,7 +1030,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.cancel(1, 'staff@mc.org');
+      const result = await service.cancel(1, 'staff@mc.org', 'HR');
       expect(result.id).toBe(1);
     });
 
@@ -972,7 +1049,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      await service.cancel(1, 'staff@mc.org');
+      await service.cancel(1, 'staff@mc.org', 'HR');
 
       const cancellationInsert = conn.query.mock.calls.find(
         (c) => (c[0] as string).includes('leave_cancellations'),
@@ -985,7 +1062,7 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[{ ...baseLeave, status: 'Approved' }]]);
 
       const service = await buildService(conn);
-      await expect(service.cancel(1, 'staff@mc.org')).rejects.toThrow(ForbiddenException);
+      await expect(service.cancel(1, 'staff@mc.org', 'HR')).rejects.toThrow(ForbiddenException);
     });
 
     it('throws BadRequestException when leave is already Rejected', async () => {
@@ -993,7 +1070,7 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[{ ...baseLeave, status: 'Rejected' }]]);
 
       const service = await buildService(conn);
-      await expect(service.cancel(1, 'staff@mc.org')).rejects.toThrow(BadRequestException);
+      await expect(service.cancel(1, 'staff@mc.org', 'HR')).rejects.toThrow(BadRequestException);
     });
 
     it('throws NotFoundException when leave not found', async () => {
@@ -1001,7 +1078,7 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[]]);
 
       const service = await buildService(conn);
-      await expect(service.cancel(99, 'staff@mc.org')).rejects.toThrow(NotFoundException);
+      await expect(service.cancel(99, 'staff@mc.org', 'HR')).rejects.toThrow(NotFoundException);
     });
 
     it('rolls back on unexpected db error', async () => {
@@ -1010,10 +1087,47 @@ beforeEach(() => {
       conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
-      await expect(service.cancel(1, 'staff@mc.org')).rejects.toThrow(
+      await expect(service.cancel(1, 'staff@mc.org', 'HR')).rejects.toThrow(
         InternalServerErrorException,
       );
       expect(conn.rollback).toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when the caller is not HR/Superadmin or the leave owner', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[baseLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+      ]);
+
+      const service = await buildService(conn);
+      await expect(
+        service.cancel(1, 'someone-else@mc.org', 'User'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows the leave owner to self-cancel', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[baseLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [{ affectedRows: 1 }],
+        [{ insertId: 1 }],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]],
+        [[]],
+        [[{ full_name: 'John Doe' }]],
+      ]);
+
+      const service = await buildService(conn);
+      const result = await service.cancel(1, 'staff@mc.org', 'User');
+
+      expect(result.id).toBe(1);
+      expect(conn.commit).toHaveBeenCalled();
     });
   });
 

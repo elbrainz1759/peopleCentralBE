@@ -15,11 +15,13 @@ import { CreateDataTrackerDto } from './dto/create-data-tracker.dto';
 import { UpdateDataTrackerDto } from './dto/update-data-tracker.dto';
 import { FindDataTrackerDto } from './dto/find-data-tracker.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 
 @Controller('data-tracker')
 export class DataTrackerController {
   constructor(private readonly dataTrackerService: DataTrackerService) {}
 
+  @Roles('HR', 'Superadmin')
   @Post()
   create(@Body() dto: CreateDataTrackerDto, @Req() req: Request) {
     const user = req.user as RequestUser;
@@ -37,6 +39,7 @@ export class DataTrackerController {
     return this.dataTrackerService.findByUniqueId(unique_id);
   }
 
+  @Roles('HR', 'Superadmin')
   @Patch(':unique_id')
   update(
     @Param('unique_id') unique_id: string,
@@ -45,6 +48,7 @@ export class DataTrackerController {
     return this.dataTrackerService.update(unique_id, dto);
   }
 
+  @Roles('HR', 'Superadmin')
   @Delete(':unique_id')
   remove(@Param('unique_id') unique_id: string) {
     return this.dataTrackerService.remove(unique_id);
@@ -53,6 +57,7 @@ export class DataTrackerController {
   // Runs automatically daily via DataTrackerScheduler (@Cron). Kept as a
   // manual endpoint too, for ops use — e.g. re-running after fixing an SMTP
   // outage without waiting for the next scheduled run.
+  @Roles('HR', 'Superadmin')
   @Post('cron/trigger')
   triggerNotifications() {
     return this.dataTrackerService.runDueNotifications();

@@ -795,7 +795,10 @@ export class LeavesService {
 
       return this.findOne(id);
     } catch (err: unknown) {
-      if (err instanceof NotFoundException || err instanceof BadRequestException)
+      if (
+        err instanceof NotFoundException ||
+        err instanceof BadRequestException
+      )
         throw err;
       throw new InternalServerErrorException(
         err instanceof Error ? err.message : undefined,
@@ -898,6 +901,7 @@ export class LeavesService {
   async approve(
     id: number,
     approvedBy: string,
+    callerRole: string,
     comments?: string,
   ): Promise<Leave> {
     const conn = await this.pool.getConnection();
@@ -914,6 +918,20 @@ export class LeavesService {
         throw new BadRequestException(
           `Only Reviewed leaves can be approved. Current status: ${leave.status}`,
         );
+      }
+
+      // Only the requester's own supervisor can approve — HR/Superadmin can
+      // act on any supervisor's behalf.
+      if (!['HR', 'Superadmin'].includes(callerRole)) {
+        const { supervisorEmail } = await this.resolveEmailRecipients(
+          conn,
+          leave.staff_id,
+        );
+        if (!supervisorEmail || supervisorEmail !== approvedBy) {
+          throw new ForbiddenException(
+            "Only this employee's supervisor can approve their leave",
+          );
+        }
       }
 
       const [durationRows] = await conn.query<mysql.RowDataPacket[]>(
@@ -1080,7 +1098,8 @@ export class LeavesService {
       await conn.rollback();
       if (
         err instanceof NotFoundException ||
-        err instanceof BadRequestException
+        err instanceof BadRequestException ||
+        err instanceof ForbiddenException
       )
         throw err;
       throw new InternalServerErrorException(err);
@@ -1095,6 +1114,7 @@ export class LeavesService {
   async reject(
     id: number,
     rejectedBy: string,
+    callerRole: string,
     comments?: string,
   ): Promise<Leave> {
     const conn = await this.pool.getConnection();
@@ -1111,6 +1131,19 @@ export class LeavesService {
         throw new BadRequestException(
           `Only Pending, Reviewed, or Approved leaves can be rejected. Current status: ${leave.status}`,
         );
+      }
+
+      // Only HR/Superadmin or this employee's own supervisor can reject.
+      if (!['HR', 'Superadmin'].includes(callerRole)) {
+        const { supervisorEmail } = await this.resolveEmailRecipients(
+          conn,
+          leave.staff_id,
+        );
+        if (!supervisorEmail || supervisorEmail !== rejectedBy) {
+          throw new ForbiddenException(
+            "Only HR or this employee's supervisor can reject their leave",
+          );
+        }
       }
 
       await conn.beginTransaction();
@@ -1218,7 +1251,8 @@ export class LeavesService {
       await conn.rollback();
       if (
         err instanceof NotFoundException ||
-        err instanceof BadRequestException
+        err instanceof BadRequestException ||
+        err instanceof ForbiddenException
       )
         throw err;
       throw new InternalServerErrorException(err);
@@ -1233,6 +1267,7 @@ export class LeavesService {
   async cancel(
     id: number,
     cancelledBy: string,
+    callerRole: string,
     reason?: string,
   ): Promise<Leave> {
     const conn = await this.pool.getConnection();
@@ -1255,6 +1290,19 @@ export class LeavesService {
         throw new BadRequestException(
           `Only Pending or Reviewed leaves can be cancelled. Current status: ${leave.status}`,
         );
+      }
+
+      // Self-service — only the leave's own owner, or HR/Superadmin, can cancel it.
+      if (!['HR', 'Superadmin'].includes(callerRole)) {
+        const { staffEmail } = await this.resolveEmailRecipients(
+          conn,
+          leave.staff_id,
+        );
+        if (!staffEmail || staffEmail !== cancelledBy) {
+          throw new ForbiddenException(
+            'You can only cancel your own leave requests',
+          );
+        }
       }
 
       await conn.beginTransaction();

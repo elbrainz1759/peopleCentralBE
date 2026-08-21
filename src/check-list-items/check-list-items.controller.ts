@@ -16,6 +16,7 @@ import { CreateCheckListItemDto } from './dto/create-check-list-item.dto';
 import { UpdateCheckListItemDto } from './dto/update-check-list-item.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 
 @Controller('check-list-items')
@@ -23,6 +24,7 @@ export class CheckListItemsController {
   constructor(private readonly checkListItemsService: CheckListItemsService) {}
 
   // POST /check-list-items
+  @Roles('HR', 'Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateCheckListItemDto, @Req() req: Request) {
@@ -49,12 +51,14 @@ export class CheckListItemsController {
   }
 
   // PATCH /check-list-items/:id
+  @Roles('HR', 'Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateCheckListItemDto) {
     return this.checkListItemsService.update(id, dto);
   }
 
   // DELETE /check-list-items/:id
+  @Roles('HR', 'Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {

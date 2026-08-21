@@ -15,6 +15,7 @@ import { EmployeeService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { Public } from '../decorators/public.decorator';
+import { Roles } from '../decorators/roles.decorator';
 import { FindEmployeesDto } from './dto/find-employee.dto';
 
 @Controller('employees')
@@ -43,6 +44,7 @@ export class EmployeeController {
     return this.employeeService.findByUniqueId(unique_id);
   }
 
+  @Roles('HR', 'Superadmin')
   @Patch(':unique_id')
   update(
     @Param('unique_id') unique_id: string,
@@ -51,6 +53,7 @@ export class EmployeeController {
     return this.employeeService.update(unique_id, updateEmployeeDto);
   }
 
+  @Roles('HR', 'Superadmin')
   @Delete(':unique_id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('unique_id') unique_id: string) {

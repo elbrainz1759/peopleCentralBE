@@ -16,6 +16,7 @@ import { CreateLeaveTypeDto } from './dto/create-leave-type.dto';
 import { UpdateLeaveTypeDto } from './dto/update-leave-type.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 
 @Controller('leave-types')
@@ -23,6 +24,7 @@ export class LeaveTypesController {
   constructor(private readonly leaveTypesService: LeaveTypesService) {}
 
   // POST /leave-types
+  @Roles('Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateLeaveTypeDto, @Req() req: Request) {
@@ -49,12 +51,14 @@ export class LeaveTypesController {
   }
 
   // PATCH /leave-types/:id
+  @Roles('Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateLeaveTypeDto) {
     return this.leaveTypesService.update(id, dto);
   }
 
   // DELETE /leave-types/:id
+  @Roles('Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {

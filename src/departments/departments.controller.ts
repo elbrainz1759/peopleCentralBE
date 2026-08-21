@@ -18,12 +18,14 @@ import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { Public } from '../decorators/public.decorator';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 
 @Controller('departments')
 export class DepartmentsController {
   constructor(private readonly departmentsService: DepartmentsService) {}
 
   // POST /departments
+  @Roles('Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateDepartmentDto, @Req() req: Request) {
@@ -51,12 +53,14 @@ export class DepartmentsController {
   }
 
   // PATCH /departments/:id
+  @Roles('Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateDepartmentDto) {
     return this.departmentsService.update(id, dto);
   }
 
   // DELETE /departments/:id
+  @Roles('Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {

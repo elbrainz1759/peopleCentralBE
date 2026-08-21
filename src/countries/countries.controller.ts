@@ -18,12 +18,14 @@ import { UpdateCountryDto } from './dto/update-country.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { Public } from '../decorators/public.decorator';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 
 @Controller('countries')
 export class CountriesController {
   constructor(private readonly countriesService: CountriesService) {}
 
   // POST /countries
+  @Roles('Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateCountryDto, @Req() req: Request) {
@@ -51,12 +53,14 @@ export class CountriesController {
   }
 
   // PATCH /countries/:id
+  @Roles('Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateCountryDto) {
     return this.countriesService.update(id, dto);
   }
 
   // DELETE /countries/:id
+  @Roles('Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {

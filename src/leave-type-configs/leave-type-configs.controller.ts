@@ -14,6 +14,7 @@ import { LeaveTypeConfigsService } from './leave-type-configs.service';
 import { CreateLeaveTypeConfigDto } from './dto/create-leave-type-config.dto';
 import { UpdateLeaveTypeConfigDto } from './dto/update-leave-type-config.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 
 @Controller('leave-type-configs')
@@ -23,6 +24,7 @@ export class LeaveTypeConfigsController {
   ) {}
 
   // POST /leave-type-configs
+  @Roles('Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateLeaveTypeConfigDto, @Req() req: Request) {
@@ -55,12 +57,14 @@ export class LeaveTypeConfigsController {
   }
 
   // PATCH /leave-type-configs/:id
+  @Roles('Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateLeaveTypeConfigDto) {
     return this.leaveTypeConfigsService.update(id, dto);
   }
 
   // DELETE /leave-type-configs/:id
+  @Roles('Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {

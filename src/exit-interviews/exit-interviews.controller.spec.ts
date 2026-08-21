@@ -241,6 +241,7 @@ describe('ExitInterviewController', () => {
         'HR',
         mockUser.email,
         [1, 2],
+        mockUser.role,
         'All items checked',
       );
       expect(result).toEqual(baseClearanceStatus);
@@ -258,6 +259,7 @@ describe('ExitInterviewController', () => {
         'Operations',
         mockUser.email,
         [3],
+        mockUser.role,
         undefined,
       );
     });

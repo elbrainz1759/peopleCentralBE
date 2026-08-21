@@ -18,6 +18,7 @@ import { AccrueLeaveBalanceDto } from './dto/accrue-leave-balance.dto';
 import { RolloverLeaveBalanceDto } from './dto/rollover-leave-balance.dto';
 import { UpdateLeaveBalanceDto } from './dto/update-leave-balance.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 
 @Controller('leave-balances')
@@ -25,6 +26,7 @@ export class LeaveBalancesController {
   constructor(private readonly leaveBalancesService: LeaveBalancesService) {}
 
   // POST /leave-balances/bulk-upload
+  @Roles('HR', 'Superadmin')
   @Post('bulk-upload')
   @HttpCode(HttpStatus.CREATED)
   bulkUpload(@Body() dto: BulkUploadLeaveBalanceDto, @Req() req: Request) {
@@ -33,6 +35,7 @@ export class LeaveBalancesController {
   }
 
   // POST /leave-balances/accrue
+  @Roles('HR', 'Superadmin')
   @Post('accrue')
   @HttpCode(HttpStatus.OK)
   accrue(@Body() dto: AccrueLeaveBalanceDto, @Req() req: Request) {
@@ -44,6 +47,7 @@ export class LeaveBalancesController {
   }
 
   // POST /leave-balances/rollover
+  @Roles('HR', 'Superadmin')
   @Post('rollover')
   @HttpCode(HttpStatus.OK)
   rollover(@Body() dto: RolloverLeaveBalanceDto, @Req() req: Request) {
@@ -106,6 +110,7 @@ export class LeaveBalancesController {
   }
 
   // PATCH /leave-balances/:id
+  @Roles('HR', 'Superadmin')
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -117,6 +122,7 @@ export class LeaveBalancesController {
   }
 
   // DELETE /leave-balances/:id
+  @Roles('HR', 'Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id', ParseIntPipe) id: number) {

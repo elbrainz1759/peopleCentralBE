@@ -196,7 +196,7 @@ describe('LeavesController', () => {
 
       const result = await controller.approve(1, {}, mockReq() as Request);
 
-      expect(mockLeavesService.approve).toHaveBeenCalledWith(1, mockUser.email, undefined);
+      expect(mockLeavesService.approve).toHaveBeenCalledWith(1, mockUser.email, mockUser.role, undefined);
       expect(result).toEqual(approved);
     });
 
@@ -232,7 +232,7 @@ describe('LeavesController', () => {
 
       const result = await controller.reject(1, {}, mockReq() as Request);
 
-      expect(mockLeavesService.reject).toHaveBeenCalledWith(1, mockUser.email, undefined);
+      expect(mockLeavesService.reject).toHaveBeenCalledWith(1, mockUser.email, mockUser.role, undefined);
       expect(result).toEqual(rejected);
     });
 
@@ -262,7 +262,7 @@ describe('LeavesController', () => {
 
       const result = await controller.cancel(1, cancelDto, mockReq() as Request);
 
-      expect(mockLeavesService.cancel).toHaveBeenCalledWith(1, mockUser.email, cancelDto.reason);
+      expect(mockLeavesService.cancel).toHaveBeenCalledWith(1, mockUser.email, mockUser.role, cancelDto.reason);
       expect(result).toEqual(cancelled);
     });
 
@@ -271,7 +271,7 @@ describe('LeavesController', () => {
 
       await controller.cancel(1, {}, mockReq() as Request);
 
-      expect(mockLeavesService.cancel).toHaveBeenCalledWith(1, mockUser.email, undefined);
+      expect(mockLeavesService.cancel).toHaveBeenCalledWith(1, mockUser.email, mockUser.role, undefined);
     });
 
     it('propagates ForbiddenException when leave is Approved', async () => {

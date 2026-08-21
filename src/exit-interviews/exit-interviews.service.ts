@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  ForbiddenException,
   InternalServerErrorException,
   Inject,
   Logger,
@@ -167,6 +168,20 @@ const STAGE_ROLE_MAP: Record<string, string> = {
   Finance: 'Finance',
   HR: 'HR',
   HR_Director: 'HR',
+};
+
+// Roles allowed to clear each department (Supervisor is excluded — that's
+// an ownership check against the exit interview's actual supervisor_id,
+// handled separately in clearDepartment()). HR/Superadmin can act on any
+// department's behalf.
+const CLEARANCE_ROLES: Record<
+  Exclude<ClearDepartment, 'Supervisor'>,
+  string[]
+> = {
+  Operations: ['Operation', 'HR', 'Superadmin'],
+  Finance: ['Finance', 'HR', 'Superadmin'],
+  HR: ['HR', 'Superadmin'],
+  HR_Director: ['HR', 'Superadmin'],
 };
 
 // ─── Notification message builders ────────────────────────────────────────────
@@ -712,6 +727,7 @@ export class ExitInterviewService {
     department: ClearDepartment,
     clearedBy: string,
     checkListItemIds: number[],
+    callerRole: string,
     notes?: string,
   ): Promise<ClearanceStatusResult> {
     const conn = await this.pool.getConnection();
@@ -719,7 +735,7 @@ export class ExitInterviewService {
       await conn.beginTransaction();
 
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT stage, status, staff_id FROM exit_interviews WHERE unique_id = ?`,
+        `SELECT stage, status, staff_id, supervisor_id FROM exit_interviews WHERE unique_id = ?`,
         [id],
       );
       if (!existing.length)
@@ -728,6 +744,31 @@ export class ExitInterviewService {
       const fromStage = existing[0]['stage'] as string;
       const fromStatus = existing[0]['status'] as string;
       const staffId = existing[0]['staff_id'] as number;
+      const supervisorId = existing[0]['supervisor_id'] as string;
+
+      // Authorization: Supervisor clearance is an ownership check (only the
+      // employee's actual assigned supervisor, or HR/Superadmin, can clear
+      // it); the other departments are static role checks.
+      if (department === 'Supervisor') {
+        if (!['HR', 'Superadmin'].includes(callerRole)) {
+          const supervisorEmail = await this.resolveEmployeeEmail(
+            conn,
+            supervisorId,
+          );
+          if (!supervisorEmail || supervisorEmail !== clearedBy) {
+            throw new ForbiddenException(
+              "Only this employee's assigned supervisor can clear the Supervisor stage",
+            );
+          }
+        }
+      } else {
+        const allowedRoles = CLEARANCE_ROLES[department];
+        if (!allowedRoles.includes(callerRole)) {
+          throw new ForbiddenException(
+            `Only ${allowedRoles.join('/')} can clear the ${department} stage`,
+          );
+        }
+      }
 
       // Insert clearance rows — IGNORE duplicates
       for (const itemId of checkListItemIds) {
@@ -834,7 +875,8 @@ export class ExitInterviewService {
       return result;
     } catch (err) {
       await conn.rollback();
-      if (err instanceof NotFoundException) throw err;
+      if (err instanceof NotFoundException || err instanceof ForbiddenException)
+        throw err;
       throw new InternalServerErrorException(err);
     } finally {
       conn.release();

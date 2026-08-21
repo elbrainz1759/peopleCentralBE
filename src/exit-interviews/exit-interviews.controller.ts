@@ -22,6 +22,7 @@ import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { ClearDepartmentDto } from './dto/clear-department.dto';
 import type { Request } from 'express';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 
 @Controller('exit-interviews')
 export class ExitInterviewController {
@@ -111,19 +112,16 @@ export class ExitInterviewController {
     const user = req.user as RequestUser;
     return this.exitInterviewService.clearDepartment(
       id,
-      dto.department as
-        | 'Supervisor'
-        | 'HR'
-        | 'Operations'
-        | 'Finance'
-        | 'HR_Director',
+      dto.department,
       user.email,
       dto.checkListItemIds,
+      user.role,
       dto.notes,
     );
   }
 
   // PATCH /exit-interviews/:id/finalize
+  @Roles('HR', 'Superadmin')
   @Patch(':id/finalize')
   finalize(
     @Param('id') id: string,
@@ -145,6 +143,7 @@ export class ExitInterviewController {
   }
 
   // DELETE /exit-interviews/:id
+  @Roles('HR', 'Superadmin')
   @Delete(':id')
   remove(@Param('id') id: string): Promise<{ message: string }> {
     return this.exitInterviewService.remove(id);

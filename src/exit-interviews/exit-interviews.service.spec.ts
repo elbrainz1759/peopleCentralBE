@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import {
   NotFoundException,
+  ForbiddenException,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { ExitInterviewService } from './exit-interviews.service';
@@ -321,6 +322,7 @@ describe('ExitInterviewService', () => {
         'Supervisor',
         'sup@mc.org',
         [1],
+        'Superadmin',
         'Done',
       );
 
@@ -347,7 +349,7 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('Operations');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'Operations', 'ops@mc.org', [1]);
+      await service.clearDepartment('abc123', 'Operations', 'ops@mc.org', [1], 'Superadmin');
 
       const stageUpdate = conn.execute.mock.calls.find(
         (c) =>
@@ -362,7 +364,7 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('Finance');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'Finance', 'fin@mc.org', [1]);
+      await service.clearDepartment('abc123', 'Finance', 'fin@mc.org', [1], 'Superadmin');
 
       const stageUpdate = conn.execute.mock.calls.find(
         (c) =>
@@ -377,7 +379,7 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('HR');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'HR', 'hr@mc.org', [1]);
+      await service.clearDepartment('abc123', 'HR', 'hr@mc.org', [1], 'Superadmin');
 
       const stageUpdate = conn.execute.mock.calls.find(
         (c) =>
@@ -392,7 +394,7 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('HR_Director');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'HR_Director', 'dir@mc.org', [1]);
+      await service.clearDepartment('abc123', 'HR_Director', 'dir@mc.org', [1], 'Superadmin');
 
       const stageUpdate = conn.execute.mock.calls.find(
         (c) =>
@@ -407,12 +409,58 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('Supervisor');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'Supervisor', 'sup@mc.org', [1]);
+      await service.clearDepartment('abc123', 'Supervisor', 'sup@mc.org', [1], 'Superadmin');
 
       const auditCalls = conn.execute.mock.calls.filter((c) =>
         (c[0] as string).includes('exit_interview_audit_log'),
       );
       expect(auditCalls).toHaveLength(1); // single combined entry now
+    });
+
+    it('throws ForbiddenException when a non-supervisor tries to clear the Supervisor stage', async () => {
+      const conn = makeConn();
+      q(conn, [
+        [[{ stage: 'Supervisor', status: 'Pending', staff_id: 1001, supervisor_id: 'sup-uid' }]],
+        [[{ email: 'real-sup@mc.org' }]], // resolveEmployeeEmail(supervisor_id)
+      ]);
+
+      const service = await buildService(conn);
+      await expect(
+        service.clearDepartment('abc123', 'Supervisor', 'imposter@mc.org', [1], 'User'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows the actual assigned supervisor to clear the Supervisor stage', async () => {
+      const conn = makeConn();
+      q(conn, [
+        [[{ stage: 'Supervisor', status: 'Pending', staff_id: 1001, supervisor_id: 'sup-uid' }]],
+        [[{ email: 'sup@mc.org' }]], // resolveEmployeeEmail(supervisor_id)
+        [[{ ...baseInterview, stage: 'Supervisor' }]], // getClearanceStatus row
+        [[]], // getClearanceStatus clearances
+      ]);
+
+      const service = await buildService(conn);
+      await service.clearDepartment('abc123', 'Supervisor', 'sup@mc.org', [1], 'User');
+
+      expect(conn.commit).toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when a non-Operation role tries to clear Operations', async () => {
+      const conn = setupClearConn('Operations');
+      const service = await buildService(conn);
+
+      await expect(
+        service.clearDepartment('abc123', 'Operations', 'someone@mc.org', [1], 'User'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows the Operation role to clear Operations', async () => {
+      const conn = setupClearConn('Operations');
+      const service = await buildService(conn);
+
+      await service.clearDepartment('abc123', 'Operations', 'ops@mc.org', [1], 'Operation');
+
+      expect(conn.commit).toHaveBeenCalled();
     });
 
     it('throws NotFoundException when interview not found', async () => {
@@ -421,7 +469,7 @@ describe('ExitInterviewService', () => {
 
       const service = await buildService(conn);
       await expect(
-        service.clearDepartment('bad', 'HR', 'hr@mc.org', [1]),
+        service.clearDepartment('bad', 'HR', 'hr@mc.org', [1], 'Superadmin'),
       ).rejects.toThrow(NotFoundException);
       expect(conn.rollback).toHaveBeenCalled();
     });
@@ -433,7 +481,7 @@ describe('ExitInterviewService', () => {
 
       const service = await buildService(conn);
       await expect(
-        service.clearDepartment('abc123', 'HR', 'hr@mc.org', [1]),
+        service.clearDepartment('abc123', 'HR', 'hr@mc.org', [1], 'Superadmin'),
       ).rejects.toThrow(InternalServerErrorException);
       expect(conn.rollback).toHaveBeenCalled();
     });

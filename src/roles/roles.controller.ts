@@ -16,6 +16,7 @@ import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
+import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
 
 @Controller('roles')
@@ -23,6 +24,7 @@ export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   // POST /roles
+  @Roles('Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateRoleDto, @Req() req: Request) {
@@ -49,12 +51,14 @@ export class RolesController {
   }
 
   // PATCH /roles/:id
+  @Roles('Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
     return this.rolesService.update(id, dto);
   }
 
   // DELETE /roles/:id
+  @Roles('Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {
