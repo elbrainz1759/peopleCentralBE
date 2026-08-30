@@ -226,7 +226,7 @@ export class LeavesService {
       `SELECT e.email      AS staff_email,
               s.email      AS supervisor_email
        FROM   employee e
-       LEFT JOIN employee s ON s.staff_id = e.supervisor
+       LEFT JOIN employee s ON s.unique_id = e.supervisor
        WHERE  e.staff_id = ?`,
       [staffId],
     );
@@ -669,7 +669,7 @@ export class LeavesService {
            d.name                                   AS department_name
          FROM leaves l
          LEFT JOIN employee e     ON e.staff_id  = l.staff_id
-         LEFT JOIN employee s     ON s.staff_id  = e.supervisor
+         LEFT JOIN employee s     ON s.unique_id = e.supervisor
          LEFT JOIN locations o    ON o.unique_id = e.location
          LEFT JOIN programs p     ON p.unique_id = e.program
          LEFT JOIN departments d  ON d.unique_id = e.department
