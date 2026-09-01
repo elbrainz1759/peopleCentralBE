@@ -10,10 +10,23 @@ import {
 import * as mysql from 'mysql2/promise';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { BulkCreateEmployeeDto } from './dto/bulk-create-employee.dto';
 import { randomBytes } from 'crypto';
 import { FindEmployeesDto } from './dto/find-employee.dto';
 import { ensureExists } from '../utils/check-exit.util';
 import { MailService } from '../mail/mail.service';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
+
+export interface BulkUploadResult {
+  created: number;
+  updated: number;
+  errors: { staffId: number; email: string; error: string }[];
+  unresolvedSupervisors: {
+    staffId: number;
+    email: string;
+    supervisorStaffId: number;
+  }[];
+}
 
 export interface EmployeeRow extends mysql.RowDataPacket {
   id: number;
@@ -172,6 +185,150 @@ export class EmployeeService {
 
       throw new InternalServerErrorException('Failed to create employee');
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /employees/bulk-upload  (HR/Superadmin)
+  //
+  // Creates or updates (matched by email or staffId, same dedup rule as
+  // create()) a batch of employees, then does a second pass to link
+  // supervisors — supervisorStaffId is a raw staffId, resolved against every
+  // row in this same batch plus any existing employee, since the supervisor
+  // may be created in this very upload. Unresolvable supervisor links are
+  // left unset and reported back rather than failing the whole row.
+  // ---------------------------------------------------------------------------
+  async bulkUpload(
+    dto: BulkCreateEmployeeDto,
+    user: RequestUser,
+  ): Promise<BulkUploadResult> {
+    // Pre-flight — validate every distinct lookup ID referenced, once each,
+    // rather than per row.
+    const distinct = (vals: string[]) => [...new Set(vals)];
+    await Promise.all([
+      ...distinct(dto.employees.map((e) => e.departmentId)).map((id) =>
+        ensureExists(this.pool, 'departments', id, 'Department'),
+      ),
+      ...distinct(dto.employees.map((e) => e.locationId)).map((id) =>
+        ensureExists(this.pool, 'locations', id, 'Location'),
+      ),
+      ...distinct(dto.employees.map((e) => e.programId)).map((id) =>
+        ensureExists(this.pool, 'programs', id, 'Program'),
+      ),
+      ...distinct(dto.employees.map((e) => e.countryId)).map((id) =>
+        ensureExists(this.pool, 'countries', id, 'Country'),
+      ),
+    ]);
+
+    const errors: BulkUploadResult['errors'] = [];
+    // staffId -> unique_id, for every row that made it in (created or
+    // updated) this run — used for the supervisor-linking pass below.
+    const staffIdToUniqueId = new Map<number, string>();
+    let created = 0;
+    let updated = 0;
+
+    for (const row of dto.employees) {
+      try {
+        const [existingRows] = await this.pool.query<EmployeeRow[]>(
+          'SELECT unique_id FROM employee WHERE email = ? OR staff_id = ?',
+          [row.email, row.staffId],
+        );
+
+        if (existingRows.length > 0) {
+          const result = await this.update(existingRows[0].unique_id, {
+            firstName: row.firstName,
+            lastName: row.lastName,
+            designation: row.designation,
+            staffId: row.staffId,
+            locationId: row.locationId,
+            departmentId: row.departmentId,
+            programId: row.programId,
+            countryId: row.countryId,
+          });
+          staffIdToUniqueId.set(row.staffId, result.unique_id);
+          updated++;
+        } else {
+          const unique_id = randomBytes(16).toString('hex');
+          await this.pool.query<mysql.ResultSetHeader>(
+            `INSERT INTO employee (status, unique_id, designation, first_name, last_name, staff_id, email, location, department, program, country, created_by)
+             VALUES ('Pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              unique_id,
+              row.designation,
+              row.firstName,
+              row.lastName,
+              row.staffId,
+              row.email,
+              row.locationId,
+              row.departmentId,
+              row.programId,
+              row.countryId,
+              user.email,
+            ],
+          );
+          staffIdToUniqueId.set(row.staffId, unique_id);
+          created++;
+        }
+      } catch (err) {
+        errors.push({
+          staffId: row.staffId,
+          email: row.email,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Supervisor-linking pass — resolve any supervisorStaffId not already
+    // seen in this batch against existing employees.
+    const rowsNeedingSupervisor = dto.employees.filter(
+      (e) => e.supervisorStaffId && staffIdToUniqueId.has(e.staffId),
+    );
+    const unseenSupervisorIds = distinct(
+      rowsNeedingSupervisor
+        .map((e) => String(e.supervisorStaffId))
+        .filter((id) => !staffIdToUniqueId.has(Number(id))),
+    ).map(Number);
+
+    if (unseenSupervisorIds.length) {
+      const [supRows] = await this.pool.query<mysql.RowDataPacket[]>(
+        `SELECT staff_id, unique_id FROM employee WHERE staff_id IN (?)`,
+        [unseenSupervisorIds],
+      );
+      for (const r of supRows) {
+        staffIdToUniqueId.set(r.staff_id as number, r.unique_id as string);
+      }
+    }
+
+    const unresolvedSupervisors: BulkUploadResult['unresolvedSupervisors'] = [];
+
+    for (const row of rowsNeedingSupervisor) {
+      if (row.supervisorStaffId === row.staffId) {
+        unresolvedSupervisors.push({
+          staffId: row.staffId,
+          email: row.email,
+          supervisorStaffId: row.supervisorStaffId,
+        });
+        continue;
+      }
+
+      const empUniqueId = staffIdToUniqueId.get(row.staffId)!;
+      const supUniqueId = staffIdToUniqueId.get(row.supervisorStaffId!);
+
+      if (!supUniqueId) {
+        unresolvedSupervisors.push({
+          staffId: row.staffId,
+          email: row.email,
+          supervisorStaffId: row.supervisorStaffId!,
+        });
+        continue;
+      }
+
+      await this.pool.query(
+        'UPDATE employee SET supervisor = ? WHERE unique_id = ?',
+        [supUniqueId, empUniqueId],
+      );
+    }
+
+    return { created, updated, errors, unresolvedSupervisors };
   }
 
   async findAll(query?: FindEmployeesDto) {

@@ -10,13 +10,17 @@ import {
   HttpCode,
   HttpStatus,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { EmployeeService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { BulkCreateEmployeeDto } from './dto/bulk-create-employee.dto';
 import { Public } from '../decorators/public.decorator';
 import { Roles } from '../decorators/roles.decorator';
 import { FindEmployeesDto } from './dto/find-employee.dto';
+import { RequestUser } from 'src/common/interfaces/request-user.interface';
 
 @Controller('employees')
 export class EmployeeController {
@@ -27,6 +31,14 @@ export class EmployeeController {
   @HttpCode(HttpStatus.CREATED)
   create(@Body() createEmployeeDto: CreateEmployeeDto) {
     return this.employeeService.create(createEmployeeDto);
+  }
+
+  @Roles('HR', 'Superadmin')
+  @Post('bulk-upload')
+  @HttpCode(HttpStatus.CREATED)
+  bulkUpload(@Body() dto: BulkCreateEmployeeDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.employeeService.bulkUpload(dto, user);
   }
 
   @Get()

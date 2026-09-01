@@ -2,10 +2,18 @@ import { EmployeeController } from './employees.controller';
 
 describe('EmployeeController', () => {
   let controller: EmployeeController;
-  const mockService: any = { findAll: jest.fn(), create: jest.fn(), findOne: jest.fn(), findByUniqueId: jest.fn(), update: jest.fn(), remove: jest.fn() };
+  const mockService: any = {
+    findAll: jest.fn(),
+    create: jest.fn(),
+    bulkUpload: jest.fn(),
+    findOne: jest.fn(),
+    findByUniqueId: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn(),
+  };
 
   beforeEach(() => {
-    controller = new EmployeeController(mockService as any);
+    controller = new EmployeeController(mockService);
   });
 
   it('should be defined', () => {
@@ -15,6 +23,23 @@ describe('EmployeeController', () => {
   it('create proxies to service', async () => {
     mockService.create.mockResolvedValue('created');
     expect(await controller.create({} as any)).toBe('created');
+  });
+
+  it('bulkUpload proxies to service with the dto and caller', async () => {
+    const summary = {
+      created: 2,
+      updated: 0,
+      errors: [],
+      unresolvedSupervisors: [],
+    };
+    mockService.bulkUpload.mockResolvedValue(summary);
+
+    const user = { email: 'hr@mercycorps.org', role: 'HR' };
+    const dto = { employees: [{}] } as any;
+    const req = { user } as any;
+
+    expect(await controller.bulkUpload(dto, req)).toBe(summary);
+    expect(mockService.bulkUpload).toHaveBeenCalledWith(dto, user);
   });
 
   it('findAll proxies to service', async () => {
