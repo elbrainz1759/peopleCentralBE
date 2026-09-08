@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import {
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
 import { ExitInterviewService } from './exit-interviews.service';
@@ -349,7 +350,13 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('Operations');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'Operations', 'ops@mc.org', [1], 'Superadmin');
+      await service.clearDepartment(
+        'abc123',
+        'Operations',
+        'ops@mc.org',
+        [1],
+        'Superadmin',
+      );
 
       const stageUpdate = conn.execute.mock.calls.find(
         (c) =>
@@ -364,7 +371,13 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('Finance');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'Finance', 'fin@mc.org', [1], 'Superadmin');
+      await service.clearDepartment(
+        'abc123',
+        'Finance',
+        'fin@mc.org',
+        [1],
+        'Superadmin',
+      );
 
       const stageUpdate = conn.execute.mock.calls.find(
         (c) =>
@@ -379,7 +392,13 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('HR');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'HR', 'hr@mc.org', [1], 'Superadmin');
+      await service.clearDepartment(
+        'abc123',
+        'HR',
+        'hr@mc.org',
+        [1],
+        'Superadmin',
+      );
 
       const stageUpdate = conn.execute.mock.calls.find(
         (c) =>
@@ -394,7 +413,13 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('HR_Director');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'HR_Director', 'dir@mc.org', [1], 'Superadmin');
+      await service.clearDepartment(
+        'abc123',
+        'HR_Director',
+        'dir@mc.org',
+        [1],
+        'Superadmin',
+      );
 
       const stageUpdate = conn.execute.mock.calls.find(
         (c) =>
@@ -409,7 +434,13 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('Supervisor');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'Supervisor', 'sup@mc.org', [1], 'Superadmin');
+      await service.clearDepartment(
+        'abc123',
+        'Supervisor',
+        'sup@mc.org',
+        [1],
+        'Superadmin',
+      );
 
       const auditCalls = conn.execute.mock.calls.filter((c) =>
         (c[0] as string).includes('exit_interview_audit_log'),
@@ -420,27 +451,57 @@ describe('ExitInterviewService', () => {
     it('throws ForbiddenException when a non-supervisor tries to clear the Supervisor stage', async () => {
       const conn = makeConn();
       q(conn, [
-        [[{ stage: 'Supervisor', status: 'Pending', staff_id: 1001, supervisor_id: 'sup-uid' }]],
+        [
+          [
+            {
+              stage: 'Supervisor',
+              status: 'Pending',
+              staff_id: 1001,
+              supervisor_id: 'sup-uid',
+            },
+          ],
+        ],
         [[{ email: 'real-sup@mc.org' }]], // resolveEmployeeEmail(supervisor_id)
       ]);
 
       const service = await buildService(conn);
       await expect(
-        service.clearDepartment('abc123', 'Supervisor', 'imposter@mc.org', [1], 'User'),
+        service.clearDepartment(
+          'abc123',
+          'Supervisor',
+          'imposter@mc.org',
+          [1],
+          'User',
+        ),
       ).rejects.toThrow(ForbiddenException);
     });
 
     it('allows the actual assigned supervisor to clear the Supervisor stage', async () => {
       const conn = makeConn();
       q(conn, [
-        [[{ stage: 'Supervisor', status: 'Pending', staff_id: 1001, supervisor_id: 'sup-uid' }]],
+        [
+          [
+            {
+              stage: 'Supervisor',
+              status: 'Pending',
+              staff_id: 1001,
+              supervisor_id: 'sup-uid',
+            },
+          ],
+        ],
         [[{ email: 'sup@mc.org' }]], // resolveEmployeeEmail(supervisor_id)
         [[{ ...baseInterview, stage: 'Supervisor' }]], // getClearanceStatus row
         [[]], // getClearanceStatus clearances
       ]);
 
       const service = await buildService(conn);
-      await service.clearDepartment('abc123', 'Supervisor', 'sup@mc.org', [1], 'User');
+      await service.clearDepartment(
+        'abc123',
+        'Supervisor',
+        'sup@mc.org',
+        [1],
+        'User',
+      );
 
       expect(conn.commit).toHaveBeenCalled();
     });
@@ -450,7 +511,13 @@ describe('ExitInterviewService', () => {
       const service = await buildService(conn);
 
       await expect(
-        service.clearDepartment('abc123', 'Operations', 'someone@mc.org', [1], 'User'),
+        service.clearDepartment(
+          'abc123',
+          'Operations',
+          'someone@mc.org',
+          [1],
+          'User',
+        ),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -458,9 +525,120 @@ describe('ExitInterviewService', () => {
       const conn = setupClearConn('Operations');
       const service = await buildService(conn);
 
-      await service.clearDepartment('abc123', 'Operations', 'ops@mc.org', [1], 'Operation');
+      await service.clearDepartment(
+        'abc123',
+        'Operations',
+        'ops@mc.org',
+        [1],
+        'Operation',
+      );
 
       expect(conn.commit).toHaveBeenCalled();
+    });
+
+    describe('rehire eligibility (Supervisor stage only)', () => {
+      it('persists Yes without requiring a reason', async () => {
+        const conn = setupClearConn('Supervisor');
+        const service = await buildService(conn);
+
+        await service.clearDepartment(
+          'abc123',
+          'Supervisor',
+          'sup@mc.org',
+          [1],
+          'Superadmin',
+          undefined,
+          'Yes',
+        );
+
+        const rehireUpdate = conn.execute.mock.calls.find((c) =>
+          (c[0] as string).includes('rehire_eligible'),
+        );
+        expect(rehireUpdate).toBeDefined();
+        expect(rehireUpdate![1]).toEqual(['Yes', null, 'abc123']);
+        expect(conn.commit).toHaveBeenCalled();
+      });
+
+      it('persists No together with the reason', async () => {
+        const conn = setupClearConn('Supervisor');
+        const service = await buildService(conn);
+
+        await service.clearDepartment(
+          'abc123',
+          'Supervisor',
+          'sup@mc.org',
+          [1],
+          'Superadmin',
+          undefined,
+          'No',
+          'Repeated attendance issues',
+        );
+
+        const rehireUpdate = conn.execute.mock.calls.find((c) =>
+          (c[0] as string).includes('rehire_eligible'),
+        );
+        expect(rehireUpdate![1]).toEqual([
+          'No',
+          'Repeated attendance issues',
+          'abc123',
+        ]);
+      });
+
+      it('throws BadRequestException when No is given without a reason', async () => {
+        const conn = setupClearConn('Supervisor');
+        const service = await buildService(conn);
+
+        await expect(
+          service.clearDepartment(
+            'abc123',
+            'Supervisor',
+            'sup@mc.org',
+            [1],
+            'Superadmin',
+            undefined,
+            'No',
+          ),
+        ).rejects.toThrow(BadRequestException);
+        expect(conn.rollback).toHaveBeenCalled();
+      });
+
+      it('does not touch rehire columns when not provided', async () => {
+        const conn = setupClearConn('Supervisor');
+        const service = await buildService(conn);
+
+        await service.clearDepartment(
+          'abc123',
+          'Supervisor',
+          'sup@mc.org',
+          [1],
+          'Superadmin',
+        );
+
+        const rehireUpdate = conn.execute.mock.calls.find((c) =>
+          (c[0] as string).includes('rehire_eligible'),
+        );
+        expect(rehireUpdate).toBeUndefined();
+      });
+
+      it('ignores a rehireEligible value on a non-Supervisor department', async () => {
+        const conn = setupClearConn('Operations');
+        const service = await buildService(conn);
+
+        await service.clearDepartment(
+          'abc123',
+          'Operations',
+          'ops@mc.org',
+          [1],
+          'Operation',
+          undefined,
+          'Yes',
+        );
+
+        const rehireUpdate = conn.execute.mock.calls.find((c) =>
+          (c[0] as string).includes('rehire_eligible'),
+        );
+        expect(rehireUpdate).toBeUndefined();
+      });
     });
 
     it('throws NotFoundException when interview not found', async () => {

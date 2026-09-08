@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   InternalServerErrorException,
   Inject,
   Logger,
@@ -41,6 +42,10 @@ export interface ExitInterview {
   operations_cleared: 'Yes' | 'No' | 'Pending';
   finance_cleared: 'Yes' | 'No' | 'Pending';
   hr_director_cleared: 'Yes' | 'No' | 'Pending';
+  // Confidential — set by the supervisor at their clearance step, redacted
+  // in the controller for anyone but HR/Superadmin.
+  rehire_eligible?: 'Yes' | 'No' | null;
+  rehire_ineligible_reason?: string | null;
   created_by: string;
   created_at: Date;
   updated_at: Date;
@@ -729,6 +734,8 @@ export class ExitInterviewService {
     checkListItemIds: number[],
     callerRole: string,
     notes?: string,
+    rehireEligible?: 'Yes' | 'No',
+    rehireIneligibleReason?: string,
   ): Promise<ClearanceStatusResult> {
     const conn = await this.pool.getConnection();
     try {
@@ -768,6 +775,25 @@ export class ExitInterviewService {
             `Only ${allowedRoles.join('/')} can clear the ${department} stage`,
           );
         }
+      }
+
+      // Rehire eligibility — captured by the supervisor at their clearance
+      // step, confidential to HR/Superadmin (redacted in the controller for
+      // every other reader, including the employee themselves).
+      if (department === 'Supervisor' && rehireEligible) {
+        if (rehireEligible === 'No' && !rehireIneligibleReason?.trim()) {
+          throw new BadRequestException(
+            'A reason is required when marking an employee ineligible for rehire',
+          );
+        }
+        await conn.execute(
+          `UPDATE exit_interviews SET rehire_eligible = ?, rehire_ineligible_reason = ? WHERE unique_id = ?`,
+          [
+            rehireEligible,
+            rehireEligible === 'No' ? rehireIneligibleReason!.trim() : null,
+            id,
+          ],
+        );
       }
 
       // Insert clearance rows — IGNORE duplicates
@@ -875,7 +901,11 @@ export class ExitInterviewService {
       return result;
     } catch (err) {
       await conn.rollback();
-      if (err instanceof NotFoundException || err instanceof ForbiddenException)
+      if (
+        err instanceof NotFoundException ||
+        err instanceof ForbiddenException ||
+        err instanceof BadRequestException
+      )
         throw err;
       throw new InternalServerErrorException(err);
     } finally {

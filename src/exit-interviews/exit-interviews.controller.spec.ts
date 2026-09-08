@@ -26,8 +26,7 @@ const mockExitInterviewService = {
 
 const mockUser = { email: 'hr@mc.org', sub: 1, role: 'hr' };
 
-const mockReq = (user = mockUser) =>
-  ({ user } as unknown as Request);
+const mockReq = (user = mockUser) => ({ user }) as unknown as Request;
 
 const baseDetail = {
   id: 1,
@@ -104,7 +103,10 @@ describe('ExitInterviewController', () => {
 
       const result = await controller.create(dto, mockReq());
 
-      expect(mockExitInterviewService.create).toHaveBeenCalledWith(dto, mockUser);
+      expect(mockExitInterviewService.create).toHaveBeenCalledWith(
+        dto,
+        mockUser,
+      );
       expect(result).toEqual(baseDetail);
     });
   });
@@ -115,9 +117,15 @@ describe('ExitInterviewController', () => {
     it('returns paginated results', async () => {
       mockExitInterviewService.findAll.mockResolvedValue(basePaginated);
 
-      const result = await controller.findAll({ page: 1, limit: 10 });
+      const result = await controller.findAll(
+        { page: 1, limit: 10 } as any,
+        mockReq(),
+      );
 
-      expect(mockExitInterviewService.findAll).toHaveBeenCalledWith({ page: 1, limit: 10 });
+      expect(mockExitInterviewService.findAll).toHaveBeenCalledWith({
+        page: 1,
+        limit: 10,
+      });
       expect(result).toEqual(basePaginated);
     });
   });
@@ -126,11 +134,18 @@ describe('ExitInterviewController', () => {
 
   describe('findPendingByDepartment()', () => {
     it('calls service with department param', async () => {
-      mockExitInterviewService.findPendingByDepartment.mockResolvedValue(basePaginated);
+      mockExitInterviewService.findPendingByDepartment.mockResolvedValue(
+        basePaginated,
+      );
 
-      const result = await controller.findPendingByDepartment('Operations');
+      const result = await controller.findPendingByDepartment(
+        'Operations',
+        mockReq(),
+      );
 
-      expect(mockExitInterviewService.findPendingByDepartment).toHaveBeenCalledWith('Operations');
+      expect(
+        mockExitInterviewService.findPendingByDepartment,
+      ).toHaveBeenCalledWith('Operations');
       expect(result).toEqual(basePaginated);
     });
   });
@@ -141,9 +156,11 @@ describe('ExitInterviewController', () => {
     it('calls service with uniqueId', async () => {
       mockExitInterviewService.findByUniqueId.mockResolvedValue(baseDetail);
 
-      const result = await controller.findByUniqueId('abc123');
+      const result = await controller.findByUniqueId('abc123', mockReq());
 
-      expect(mockExitInterviewService.findByUniqueId).toHaveBeenCalledWith('abc123');
+      expect(mockExitInterviewService.findByUniqueId).toHaveBeenCalledWith(
+        'abc123',
+      );
       expect(result).toEqual(baseDetail);
     });
   });
@@ -154,7 +171,7 @@ describe('ExitInterviewController', () => {
     it('calls service with parsed staffId', async () => {
       mockExitInterviewService.findByStaffId.mockResolvedValue([baseDetail]);
 
-      const result = await controller.findByStaffId(1001);
+      const result = await controller.findByStaffId(1001, mockReq());
 
       expect(mockExitInterviewService.findByStaffId).toHaveBeenCalledWith(1001);
       expect(result).toEqual([baseDetail]);
@@ -165,11 +182,15 @@ describe('ExitInterviewController', () => {
 
   describe('findBySupervisorId()', () => {
     it('calls service with supervisorId', async () => {
-      mockExitInterviewService.findBySupervisorId.mockResolvedValue([baseDetail]);
+      mockExitInterviewService.findBySupervisorId.mockResolvedValue([
+        baseDetail,
+      ]);
 
-      const result = await controller.findBySupervisorId('sup-uid');
+      const result = await controller.findBySupervisorId('sup-uid', mockReq());
 
-      expect(mockExitInterviewService.findBySupervisorId).toHaveBeenCalledWith('sup-uid');
+      expect(mockExitInterviewService.findBySupervisorId).toHaveBeenCalledWith(
+        'sup-uid',
+      );
       expect(result).toEqual([baseDetail]);
     });
   });
@@ -178,11 +199,15 @@ describe('ExitInterviewController', () => {
 
   describe('getClearanceStatus()', () => {
     it('returns clearance status for an interview', async () => {
-      mockExitInterviewService.getClearanceStatus.mockResolvedValue(baseClearanceStatus);
+      mockExitInterviewService.getClearanceStatus.mockResolvedValue(
+        baseClearanceStatus,
+      );
 
       const result = await controller.getClearanceStatus('abc123');
 
-      expect(mockExitInterviewService.getClearanceStatus).toHaveBeenCalledWith('abc123');
+      expect(mockExitInterviewService.getClearanceStatus).toHaveBeenCalledWith(
+        'abc123',
+      );
       expect(result).toEqual(baseClearanceStatus);
     });
   });
@@ -204,7 +229,9 @@ describe('ExitInterviewController', () => {
 
       const result = await controller.getAuditLog('abc123');
 
-      expect(mockExitInterviewService.getAuditLog).toHaveBeenCalledWith('abc123');
+      expect(mockExitInterviewService.getAuditLog).toHaveBeenCalledWith(
+        'abc123',
+      );
       expect(result).toEqual(mockLog);
     });
   });
@@ -215,10 +242,69 @@ describe('ExitInterviewController', () => {
     it('returns a single interview by id', async () => {
       mockExitInterviewService.findOne.mockResolvedValue(baseDetail);
 
-      const result = await controller.findOne('abc123');
+      const result = await controller.findOne('abc123', mockReq());
 
       expect(mockExitInterviewService.findOne).toHaveBeenCalledWith('abc123');
       expect(result).toEqual(baseDetail);
+    });
+  });
+
+  // ── rehire eligibility redaction ────────────────────────────────────────────
+
+  describe('rehire eligibility confidentiality', () => {
+    const withRehireFields = {
+      ...baseDetail,
+      rehire_eligible: 'No',
+      rehire_ineligible_reason: 'Policy violation',
+    };
+
+    it('strips rehire fields for a non-HR caller (e.g. the employee viewing their own record)', async () => {
+      mockExitInterviewService.findOne.mockResolvedValue(withRehireFields);
+
+      const result: any = await controller.findOne(
+        'abc123',
+        mockReq({ email: 'staff@mc.org', sub: 2, role: 'User' }),
+      );
+
+      expect(result.rehire_eligible).toBeUndefined();
+      expect(result.rehire_ineligible_reason).toBeUndefined();
+    });
+
+    it('keeps rehire fields for an HR caller', async () => {
+      mockExitInterviewService.findOne.mockResolvedValue(withRehireFields);
+
+      const result: any = await controller.findOne(
+        'abc123',
+        mockReq({ email: 'hr@mc.org', sub: 1, role: 'HR' }),
+      );
+
+      expect(result.rehire_eligible).toBe('No');
+      expect(result.rehire_ineligible_reason).toBe('Policy violation');
+    });
+
+    it('keeps rehire fields for a Superadmin caller', async () => {
+      mockExitInterviewService.findOne.mockResolvedValue(withRehireFields);
+
+      const result: any = await controller.findOne(
+        'abc123',
+        mockReq({ email: 'admin@mc.org', sub: 3, role: 'Superadmin' }),
+      );
+
+      expect(result.rehire_eligible).toBe('No');
+    });
+
+    it('strips rehire fields from a findAll list for a non-HR caller', async () => {
+      mockExitInterviewService.findAll.mockResolvedValue({
+        data: [withRehireFields],
+        meta: { total: 1, page: 1, limit: 10, last_page: 1 },
+      });
+
+      const result: any = await controller.findAll(
+        { page: 1, limit: 10 } as any,
+        mockReq({ email: 'staff@mc.org', sub: 2, role: 'User' }),
+      );
+
+      expect(result.data[0].rehire_eligible).toBeUndefined();
     });
   });
 
@@ -226,7 +312,9 @@ describe('ExitInterviewController', () => {
 
   describe('clearDepartment()', () => {
     it('calls service with id, department cast, user email, itemIds and notes', async () => {
-      mockExitInterviewService.clearDepartment.mockResolvedValue(baseClearanceStatus);
+      mockExitInterviewService.clearDepartment.mockResolvedValue(
+        baseClearanceStatus,
+      );
 
       const dto = {
         department: 'HR',
@@ -234,7 +322,11 @@ describe('ExitInterviewController', () => {
         notes: 'All items checked',
       };
 
-      const result = await controller.clearDepartment('abc123', dto as any, mockReq());
+      const result = await controller.clearDepartment(
+        'abc123',
+        dto as any,
+        mockReq(),
+      );
 
       expect(mockExitInterviewService.clearDepartment).toHaveBeenCalledWith(
         'abc123',
@@ -243,12 +335,16 @@ describe('ExitInterviewController', () => {
         [1, 2],
         mockUser.role,
         'All items checked',
+        undefined,
+        undefined,
       );
       expect(result).toEqual(baseClearanceStatus);
     });
 
     it('passes undefined notes when not provided', async () => {
-      mockExitInterviewService.clearDepartment.mockResolvedValue(baseClearanceStatus);
+      mockExitInterviewService.clearDepartment.mockResolvedValue(
+        baseClearanceStatus,
+      );
 
       const dto = { department: 'Operations', checkListItemIds: [3] };
 
@@ -260,6 +356,8 @@ describe('ExitInterviewController', () => {
         mockUser.email,
         [3],
         mockUser.role,
+        undefined,
+        undefined,
         undefined,
       );
     });
@@ -273,7 +371,10 @@ describe('ExitInterviewController', () => {
 
       const result = await controller.finalize('abc123', mockReq());
 
-      expect(mockExitInterviewService.finalize).toHaveBeenCalledWith('abc123', mockUser);
+      expect(mockExitInterviewService.finalize).toHaveBeenCalledWith(
+        'abc123',
+        mockUser,
+      );
       expect(result).toEqual(baseDetail);
     });
   });
@@ -288,7 +389,11 @@ describe('ExitInterviewController', () => {
 
       const result = await controller.update('abc123', dto as any, mockReq());
 
-      expect(mockExitInterviewService.update).toHaveBeenCalledWith('abc123', dto, mockUser);
+      expect(mockExitInterviewService.update).toHaveBeenCalledWith(
+        'abc123',
+        dto,
+        mockUser,
+      );
       expect(result).toEqual(baseDetail);
     });
   });
@@ -297,7 +402,9 @@ describe('ExitInterviewController', () => {
 
   describe('remove()', () => {
     it('calls service.remove() and returns confirmation', async () => {
-      const mockResponse = { message: 'Exit interview abc123 deleted successfully' };
+      const mockResponse = {
+        message: 'Exit interview abc123 deleted successfully',
+      };
       mockExitInterviewService.remove.mockResolvedValue(mockResponse);
 
       const result = await controller.remove('abc123');

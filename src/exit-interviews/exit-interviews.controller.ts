@@ -24,6 +24,25 @@ import type { Request } from 'express';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 import { Roles } from '../decorators/roles.decorator';
 
+// Rehire eligibility is confidential — set by the supervisor at their
+// clearance step, visible only to HR/Superadmin. Every other reader
+// (including the employee's own "my requests" view, which reuses these
+// same endpoints) gets it stripped out.
+const CONFIDENTIAL_FIELDS = [
+  'rehire_eligible',
+  'rehire_ineligible_reason',
+] as const;
+
+function redact<T extends object>(
+  record: T,
+  callerRole: string | undefined,
+): T {
+  if (callerRole && ['HR', 'Superadmin'].includes(callerRole)) return record;
+  const copy = { ...record } as Record<string, unknown>;
+  for (const field of CONFIDENTIAL_FIELDS) delete copy[field];
+  return copy as T;
+}
+
 @Controller('exit-interviews')
 export class ExitInterviewController {
   constructor(private readonly exitInterviewService: ExitInterviewService) {}
@@ -46,42 +65,65 @@ export class ExitInterviewController {
 
   // GET /exit-interviews
   @Get()
-  findAll(
+  async findAll(
     @Query() query: PaginationQueryDto,
+    @Req() req: Request,
   ): Promise<PaginatedResult<ExitInterviewDetail>> {
-    return this.exitInterviewService.findAll(query);
+    const user = req.user as RequestUser;
+    const result = await this.exitInterviewService.findAll(query);
+    return {
+      ...result,
+      data: result.data.map((r) => redact(r, user?.role)),
+    };
   }
 
   // GET /exit-interviews/pending/:department
   @Get('pending/:department')
-  findPendingByDepartment(
+  async findPendingByDepartment(
     @Param('department') department: string,
+    @Req() req: Request,
   ): Promise<PaginatedResult<ExitInterviewDetail>> {
-    return this.exitInterviewService.findPendingByDepartment(department);
+    const user = req.user as RequestUser;
+    const result =
+      await this.exitInterviewService.findPendingByDepartment(department);
+    return {
+      ...result,
+      data: result.data.map((r) => redact(r, user?.role)),
+    };
   }
 
   // GET /exit-interviews/unique/:uniqueId
   @Get('unique/:uniqueId')
-  findByUniqueId(
+  async findByUniqueId(
     @Param('uniqueId') uniqueId: string,
+    @Req() req: Request,
   ): Promise<ExitInterviewDetail> {
-    return this.exitInterviewService.findByUniqueId(uniqueId);
+    const user = req.user as RequestUser;
+    const result = await this.exitInterviewService.findByUniqueId(uniqueId);
+    return redact(result, user?.role);
   }
 
   // GET /exit-interviews/staff/:staffId
   @Get('staff/:staffId')
-  findByStaffId(
+  async findByStaffId(
     @Param('staffId', ParseIntPipe) staffId: number,
+    @Req() req: Request,
   ): Promise<ExitInterviewDetail[]> {
-    return this.exitInterviewService.findByStaffId(staffId);
+    const user = req.user as RequestUser;
+    const result = await this.exitInterviewService.findByStaffId(staffId);
+    return result.map((r) => redact(r, user?.role));
   }
 
   // GET /exit-interviews/supervisor/:supervisorId
   @Get('supervisor/:supervisorId')
-  findBySupervisorId(
+  async findBySupervisorId(
     @Param('supervisorId') supervisorId: string,
+    @Req() req: Request,
   ): Promise<ExitInterviewDetail[]> {
-    return this.exitInterviewService.findBySupervisorId(supervisorId);
+    const user = req.user as RequestUser;
+    const result =
+      await this.exitInterviewService.findBySupervisorId(supervisorId);
+    return result.map((r) => redact(r, user?.role));
   }
 
   // GET /exit-interviews/:id/clearance-status
@@ -98,8 +140,13 @@ export class ExitInterviewController {
 
   // GET /exit-interviews/:id
   @Get(':id')
-  findOne(@Param('id') id: string): Promise<ExitInterviewDetail> {
-    return this.exitInterviewService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<ExitInterviewDetail> {
+    const user = req.user as RequestUser;
+    const result = await this.exitInterviewService.findOne(id);
+    return redact(result, user?.role);
   }
 
   // POST /exit-interviews/:id/clear
@@ -117,6 +164,8 @@ export class ExitInterviewController {
       dto.checkListItemIds,
       user.role,
       dto.notes,
+      dto.rehireEligible,
+      dto.rehireIneligibleReason,
     );
   }
 
