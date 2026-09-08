@@ -105,6 +105,33 @@ describe('AuthService', () => {
       expect(mockConnection.commit).toHaveBeenCalled();
       expect(mockMailService.sendCaseNotification).toHaveBeenCalled();
     });
+
+    it('accepts a Pending supervisor — new system, most staff are still Pending until approved themselves', async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'User' }]]) // role found
+        .mockResolvedValueOnce([[{ unique_id: 'sup-uid-1' }]]); // supervisor found, regardless of status
+
+      mockConnection.query
+        .mockResolvedValueOnce([[{ id: 1 }]])
+        .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([{ insertId: 1 }])
+        .mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
+      mockMailService.sendCaseNotification.mockResolvedValue(undefined);
+
+      const result = await service.approveUser(
+        'user@mercycorps.org',
+        'User',
+        'pending-boss@mercycorps.org',
+      );
+
+      expect(result.message).toBe('User approved successfully');
+      // The supervisor lookup must not filter by status — confirm no
+      // "Active" condition made it into the query.
+      const supervisorQuery = mockPool.query.mock.calls[1][0] as string;
+      expect(supervisorQuery).not.toContain('Active');
+    });
   });
 
   // ─── login ───────────────────────────────────────────────────────────────────

@@ -86,15 +86,18 @@ export class AuthService {
       throw new BadRequestException('Invalid role');
     }
 
-    //validate supervisor exists and is active
+    // Validate supervisor exists — status is deliberately not checked here.
+    // This is a new system: most staff (including future supervisors) are
+    // still Pending until HR gets around to approving them individually, so
+    // requiring the supervisor to already be Active would make it
+    // impossible to build out a reporting chain in order. Any employee
+    // record can be selected as a supervisor at approval time.
     const [supRows] = await this.pool.query<UserRow[]>(
-      'SELECT unique_id FROM employee WHERE email = ? AND status = "Active"',
+      'SELECT unique_id FROM employee WHERE email = ?',
       [supervisorEmail],
     );
     if (supRows.length === 0) {
-      throw new BadRequestException(
-        'Invalid supervisor email or supervisor is not active',
-      );
+      throw new BadRequestException('Invalid supervisor email');
     }
 
     const connection = await this.pool.getConnection();
