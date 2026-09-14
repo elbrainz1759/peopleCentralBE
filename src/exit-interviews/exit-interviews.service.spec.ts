@@ -665,6 +665,176 @@ describe('ExitInterviewService', () => {
     });
   });
 
+  // ── rejectDepartment ────────────────────────────────────────────────────────────
+
+  describe('rejectDepartment', () => {
+    const setupRejectConn = (department: string) => {
+      const conn = makeConn();
+      q(conn, [
+        [
+          [
+            {
+              id: 1,
+              stage: department,
+              status: department,
+              staff_id: 1001,
+              supervisor_id: 'sup-uid',
+            },
+          ],
+        ], // existing check
+        // getClearanceStatus after commit:
+        [[{ ...baseInterview, stage: department }]], // row
+        [[]], // clearances
+      ]);
+      return conn;
+    };
+
+    it('flags the department as Rejected without advancing stage/status', async () => {
+      const conn = setupRejectConn('Operations');
+      const service = await buildService(conn);
+
+      await service.rejectDepartment(
+        'abc123',
+        'Operations',
+        'ops@mc.org',
+        'Operation',
+        'Laptop not returned',
+      );
+
+      expect(conn.commit).toHaveBeenCalled();
+
+      const flagUpdate = conn.execute.mock.calls.find((c) =>
+        (c[0] as string).includes('operations_cleared'),
+      );
+      expect(flagUpdate).toBeDefined();
+      expect(flagUpdate![0]).toContain("'Rejected'");
+
+      // Stage/status are never touched — no "stage = ?, status = ?" update
+      const stageUpdate = conn.execute.mock.calls.find(
+        (c) =>
+          (c[0] as string).includes('stage = ?') &&
+          (c[0] as string).includes('status = ?'),
+      );
+      expect(stageUpdate).toBeUndefined();
+    });
+
+    it('persists the reason on a standalone clearance row with no checklist item', async () => {
+      const conn = setupRejectConn('Finance');
+      const service = await buildService(conn);
+
+      await service.rejectDepartment(
+        'abc123',
+        'Finance',
+        'fin@mc.org',
+        'Finance',
+        'Outstanding loan balance',
+      );
+
+      const insertCall = conn.execute.mock.calls.find((c) =>
+        (c[0] as string).includes('exit_interview_clearances'),
+      );
+      expect(insertCall).toBeDefined();
+      expect(insertCall![0]).toContain('Rejected');
+      expect(insertCall![1]).toContain('Outstanding loan balance');
+    });
+
+    it('writes an audit log entry for the rejection', async () => {
+      const conn = setupRejectConn('HR');
+      const service = await buildService(conn);
+
+      await service.rejectDepartment(
+        'abc123',
+        'HR',
+        'hr@mc.org',
+        'HR',
+        'Missing signed handover doc',
+      );
+
+      const auditCalls = conn.execute.mock.calls.filter((c) =>
+        (c[0] as string).includes('exit_interview_audit_log'),
+      );
+      expect(auditCalls).toHaveLength(1);
+    });
+
+    it('throws BadRequestException when no reason is given', async () => {
+      const conn = makeConn();
+      const service = await buildService(conn);
+
+      await expect(
+        service.rejectDepartment('abc123', 'Operations', 'ops@mc.org', 'Operation', '   '),
+      ).rejects.toThrow(BadRequestException);
+      // Fails validation before ever touching the connection
+      expect(conn.query).not.toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when the caller role cannot act on the department', async () => {
+      const conn = makeConn();
+      q(conn, [
+        [
+          [
+            {
+              id: 1,
+              stage: 'Finance',
+              status: 'Finance',
+              staff_id: 1001,
+              supervisor_id: 'sup-uid',
+            },
+          ],
+        ],
+      ]);
+      const service = await buildService(conn);
+
+      await expect(
+        service.rejectDepartment('abc123', 'Finance', 'ops@mc.org', 'Operation', 'Not my call'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws ForbiddenException when a non-supervisor tries to reject the Supervisor stage', async () => {
+      const conn = makeConn();
+      q(conn, [
+        [
+          [
+            {
+              id: 1,
+              stage: 'Supervisor',
+              status: 'Pending',
+              staff_id: 1001,
+              supervisor_id: 'sup-uid',
+            },
+          ],
+        ],
+        [[{ email: 'real-sup@mc.org' }]], // resolveEmployeeEmail(supervisor_id)
+      ]);
+      const service = await buildService(conn);
+
+      await expect(
+        service.rejectDepartment('abc123', 'Supervisor', 'imposter@mc.org', 'User', 'No handover'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('throws NotFoundException when the interview does not exist', async () => {
+      const conn = makeConn();
+      q(conn, [[[]]]);
+      const service = await buildService(conn);
+
+      await expect(
+        service.rejectDepartment('bad-id', 'Operations', 'ops@mc.org', 'Operation', 'reason'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rolls back on unexpected db error', async () => {
+      const conn = setupRejectConn('HR');
+      conn.execute.mockReset();
+      conn.execute.mockRejectedValueOnce(new Error('DB crash'));
+
+      const service = await buildService(conn);
+      await expect(
+        service.rejectDepartment('abc123', 'HR', 'hr@mc.org', 'HR', 'reason'),
+      ).rejects.toThrow(InternalServerErrorException);
+      expect(conn.rollback).toHaveBeenCalled();
+    });
+  });
+
   // ── finalize ──────────────────────────────────────────────────────────────────
 
   describe('finalize', () => {

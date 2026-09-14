@@ -20,6 +20,7 @@ import { CreateExitInterviewDto } from './dto/create-exit-interview.dto';
 import { UpdateExitInterviewDto } from './dto/update-exit-interview.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { ClearDepartmentDto } from './dto/clear-department.dto';
+import { RejectDepartmentDto } from './dto/reject-department.dto';
 import type { Request } from 'express';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 import { Roles } from '../decorators/roles.decorator';
@@ -166,6 +167,23 @@ export class ExitInterviewController {
       dto.notes,
       dto.rehireEligible,
       dto.rehireIneligibleReason,
+    );
+  }
+
+  // POST /exit-interviews/:id/reject
+  @Post(':id/reject')
+  reject(
+    @Param('id') id: string,
+    @Body() dto: RejectDepartmentDto,
+    @Req() req: Request,
+  ): Promise<ClearanceStatusResult> {
+    const user = req.user as RequestUser;
+    return this.exitInterviewService.rejectDepartment(
+      id,
+      dto.department,
+      user.email,
+      user.role,
+      dto.reason,
     );
   }
 

@@ -78,13 +78,14 @@ export interface AuditLog {
 export interface Clearance {
   id: string;
   unique_id: string;
-  exit_interview_id: string;
-  check_list_item_id: string;
+  exit_interview_id: number;
+  check_list_item_id: number | null;
   department: string;
+  action: 'Cleared' | 'Rejected';
   cleared_by: string;
   cleared_at: Date;
   notes: string;
-  item_name: string;
+  item_name: string | null;
 }
 
 export interface ClearanceStatusResult {
@@ -224,6 +225,19 @@ function msgAwaitingClearance(staffName: string, stage: string): string {
   );
 }
 
+function msgDepartmentRejected(
+  staffName: string,
+  department: string,
+  reason: string,
+): string {
+  return (
+    `${department} was unable to clear the exit interview for ${staffName}.\n\n` +
+    `Reason: ${reason}\n\n` +
+    `This stays flagged at the ${department} stage until HR follows up and the ` +
+    `issue is resolved.`
+  );
+}
+
 function msgFinalized(staffName: string): string {
   return (
     `The exit interview for ${staffName} has been finalized and approved by the HR Director.\n\n` +
@@ -266,6 +280,41 @@ export class ExitInterviewService {
       [uniqueId],
     );
     return (row?.email as string) ?? null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // PRIVATE — can this caller clear/reject the given department's stage?
+  // Supervisor is an ownership check against the exit interview's actual
+  // supervisor_id; the other departments are static role checks. HR/
+  // Superadmin can act on any department's behalf either way.
+  // ---------------------------------------------------------------------------
+  private async assertCanActOnDepartment(
+    conn: mysql.PoolConnection,
+    department: ClearDepartment,
+    supervisorId: string,
+    callerRole: string,
+    actorEmail: string,
+  ): Promise<void> {
+    if (department === 'Supervisor') {
+      if (!['HR', 'Superadmin'].includes(callerRole)) {
+        const supervisorEmail = await this.resolveEmployeeEmail(
+          conn,
+          supervisorId,
+        );
+        if (!supervisorEmail || supervisorEmail !== actorEmail) {
+          throw new ForbiddenException(
+            "Only this employee's assigned supervisor can act on the Supervisor stage",
+          );
+        }
+      }
+      return;
+    }
+    const allowedRoles = CLEARANCE_ROLES[department];
+    if (!allowedRoles.includes(callerRole)) {
+      throw new ForbiddenException(
+        `Only ${allowedRoles.join('/')} can act on the ${department} stage`,
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -680,7 +729,7 @@ export class ExitInterviewService {
     const conn = await this.pool.getConnection();
     try {
       const [[row]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT stage, status, supervisor_cleared, hr_cleared,
+        `SELECT id, stage, status, supervisor_cleared, hr_cleared,
                 operations_cleared, finance_cleared, hr_director_cleared
          FROM exit_interviews WHERE unique_id = ?`,
         [id],
@@ -688,13 +737,15 @@ export class ExitInterviewService {
       if (!row)
         throw new NotFoundException(`Exit interview with id ${id} not found`);
 
+      // exit_interview_clearances.exit_interview_id is an int FK — use the
+      // numeric id, not the unique_id string this method is keyed by.
       const [clearances] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT eic.*, cli.name AS item_name
          FROM exit_interview_clearances eic
          LEFT JOIN check_list_items cli ON cli.id = eic.check_list_item_id
          WHERE eic.exit_interview_id = ?
          ORDER BY eic.cleared_at ASC`,
-        [id],
+        [row['id']],
       );
 
       const supVal = row['supervisor_cleared'] as 'Yes' | 'No' | 'Pending';
@@ -742,40 +793,25 @@ export class ExitInterviewService {
       await conn.beginTransaction();
 
       const [existing] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT stage, status, staff_id, supervisor_id FROM exit_interviews WHERE unique_id = ?`,
+        `SELECT id, stage, status, staff_id, supervisor_id FROM exit_interviews WHERE unique_id = ?`,
         [id],
       );
       if (!existing.length)
         throw new NotFoundException(`Exit interview with id ${id} not found`);
 
+      const numericId = existing[0]['id'] as number;
       const fromStage = existing[0]['stage'] as string;
       const fromStatus = existing[0]['status'] as string;
       const staffId = existing[0]['staff_id'] as number;
       const supervisorId = existing[0]['supervisor_id'] as string;
 
-      // Authorization: Supervisor clearance is an ownership check (only the
-      // employee's actual assigned supervisor, or HR/Superadmin, can clear
-      // it); the other departments are static role checks.
-      if (department === 'Supervisor') {
-        if (!['HR', 'Superadmin'].includes(callerRole)) {
-          const supervisorEmail = await this.resolveEmployeeEmail(
-            conn,
-            supervisorId,
-          );
-          if (!supervisorEmail || supervisorEmail !== clearedBy) {
-            throw new ForbiddenException(
-              "Only this employee's assigned supervisor can clear the Supervisor stage",
-            );
-          }
-        }
-      } else {
-        const allowedRoles = CLEARANCE_ROLES[department];
-        if (!allowedRoles.includes(callerRole)) {
-          throw new ForbiddenException(
-            `Only ${allowedRoles.join('/')} can clear the ${department} stage`,
-          );
-        }
-      }
+      await this.assertCanActOnDepartment(
+        conn,
+        department,
+        supervisorId,
+        callerRole,
+        clearedBy,
+      );
 
       // Rehire eligibility — captured by the supervisor at their clearance
       // step, confidential to HR/Superadmin (redacted in the controller for
@@ -796,20 +832,33 @@ export class ExitInterviewService {
         );
       }
 
-      // Insert clearance rows — IGNORE duplicates
+      // Insert clearance rows — IGNORE duplicates. exit_interview_id is an
+      // int FK, so it takes the numeric id, not the unique_id string.
       for (const itemId of checkListItemIds) {
         await conn.execute(
           `INSERT IGNORE INTO exit_interview_clearances
-             (unique_id, exit_interview_id, check_list_item_id, department, cleared_by, notes)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+             (unique_id, exit_interview_id, check_list_item_id, department, action, cleared_by, notes)
+           VALUES (?, ?, ?, ?, 'Cleared', ?, ?)`,
           [
             randomBytes(16).toString('hex'),
-            id,
+            numericId,
             itemId,
             department,
             clearedBy,
             notes ?? null,
           ],
+        );
+      }
+
+      // No checklist items to attach the note to (none configured for this
+      // department, or none ticked) — still record the comment on its own
+      // row so it isn't silently dropped, and so the next stage can see it.
+      if (checkListItemIds.length === 0 && notes?.trim()) {
+        await conn.execute(
+          `INSERT INTO exit_interview_clearances
+             (unique_id, exit_interview_id, check_list_item_id, department, action, cleared_by, notes)
+           VALUES (?, ?, NULL, ?, 'Cleared', ?, ?)`,
+          [randomBytes(16).toString('hex'), numericId, department, clearedBy, notes.trim()],
         );
       }
 
@@ -894,6 +943,132 @@ export class ExitInterviewService {
       } catch (err) {
         this.logger.error(
           `Failed to send exit-interview clearance notifications for ${id}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+
+      return result;
+    } catch (err) {
+      await conn.rollback();
+      if (
+        err instanceof NotFoundException ||
+        err instanceof ForbiddenException ||
+        err instanceof BadRequestException
+      )
+        throw err;
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /exit-interviews/:id/reject
+  //
+  // Rejection flags the department's clearance as 'Rejected' and holds the
+  // record at its current stage — it does NOT advance or roll back the
+  // workflow. The employee is exiting regardless of an unreturned asset or
+  // an outstanding balance; a rejection just surfaces that issue to HR
+  // (and the employee) with a reason, and HR resolves it manually — e.g. by
+  // re-clearing once the asset is returned or the balance is settled.
+  // ---------------------------------------------------------------------------
+  async rejectDepartment(
+    id: string,
+    department: ClearDepartment,
+    rejectedBy: string,
+    callerRole: string,
+    reason: string,
+  ): Promise<ClearanceStatusResult> {
+    if (!reason?.trim()) {
+      throw new BadRequestException(
+        'A reason is required to reject a clearance stage',
+      );
+    }
+
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [existing] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT id, stage, status, staff_id, supervisor_id FROM exit_interviews WHERE unique_id = ?`,
+        [id],
+      );
+      if (!existing.length)
+        throw new NotFoundException(`Exit interview with id ${id} not found`);
+
+      const numericId = existing[0]['id'] as number;
+      const fromStage = existing[0]['stage'] as string;
+      const fromStatus = existing[0]['status'] as string;
+      const staffId = existing[0]['staff_id'] as number;
+      const supervisorId = existing[0]['supervisor_id'] as string;
+
+      await this.assertCanActOnDepartment(
+        conn,
+        department,
+        supervisorId,
+        callerRole,
+        rejectedBy,
+      );
+
+      // Standalone note row — not tied to any checklist item.
+      await conn.execute(
+        `INSERT INTO exit_interview_clearances
+           (unique_id, exit_interview_id, check_list_item_id, department, action, cleared_by, notes)
+         VALUES (?, ?, NULL, ?, 'Rejected', ?, ?)`,
+        [randomBytes(16).toString('hex'), numericId, department, rejectedBy, reason.trim()],
+      );
+
+      const { flag } = COL_MAP[department];
+      await conn.execute(
+        `UPDATE exit_interviews SET ${flag} = 'Rejected' WHERE unique_id = ?`,
+        [id],
+      );
+
+      await this.writeAuditLog(
+        conn,
+        id,
+        `${department} clearance rejected`,
+        rejectedBy,
+        {
+          fromStage,
+          toStage: fromStage,
+          fromStatus,
+          toStatus: fromStatus,
+          notes: reason.trim(),
+        },
+      );
+
+      await conn.commit();
+      const result = await this.getClearanceStatus(id);
+
+      // Notifications — non-fatal
+      try {
+        const [[staffRow]] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT CONCAT(first_name, ' ', last_name) AS full_name, email
+           FROM employee WHERE staff_id = ?`,
+          [staffId],
+        );
+        const staffName = (staffRow?.full_name as string) ?? String(staffId);
+        const staffEmail = (staffRow?.email as string) ?? null;
+        const hrEmails = await this.resolveDeptEmails(conn, 'HR');
+
+        const rejectedMailOpts = {
+          message: msgDepartmentRejected(staffName, department, reason.trim()),
+          subject: 'Mercy Corps Exit Interview',
+          subjectFull: `${department} Clearance Rejected — Action Needed`,
+          siteName: 'Mercy Corps Nigeria',
+        };
+
+        if (staffEmail)
+          await this.mailService.sendCaseNotification({
+            ...rejectedMailOpts,
+            to: staffEmail,
+          });
+        if (hrEmails.length)
+          await this.mailService.sendToMany(hrEmails, rejectedMailOpts);
+      } catch (err) {
+        this.logger.error(
+          `Failed to send exit-interview rejection notifications for ${id}`,
           err instanceof Error ? err.stack : String(err),
         );
       }
