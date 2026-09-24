@@ -44,6 +44,25 @@ function redact<T extends object>(
   return copy as T;
 }
 
+// The Supervisor's clearance comment is meant for HR/HR Lead only — not
+// for the Operations or Finance reviewers who see the same interview at
+// later stages. Strip it from any clearance-history response for anyone
+// else; the frontend already drops history entries with no `notes`, so
+// this also makes the empty Supervisor entry disappear from the list.
+function redactSupervisorNotes(
+  result: ClearanceStatusResult,
+  callerRole: string | undefined,
+): ClearanceStatusResult {
+  if (callerRole && ['HR', 'Superadmin'].includes(callerRole)) return result;
+  if (!result?.clearances) return result;
+  return {
+    ...result,
+    clearances: result.clearances.map((c) =>
+      c.department === 'Supervisor' ? { ...c, notes: null } : c,
+    ),
+  };
+}
+
 @Controller('exit-interviews')
 export class ExitInterviewController {
   constructor(private readonly exitInterviewService: ExitInterviewService) {}
@@ -129,8 +148,13 @@ export class ExitInterviewController {
 
   // GET /exit-interviews/:id/clearance-status
   @Get(':id/clearance-status')
-  getClearanceStatus(@Param('id') id: string): Promise<ClearanceStatusResult> {
-    return this.exitInterviewService.getClearanceStatus(id);
+  async getClearanceStatus(
+    @Param('id') id: string,
+    @Req() req: Request,
+  ): Promise<ClearanceStatusResult> {
+    const user = req.user as RequestUser | undefined;
+    const result = await this.exitInterviewService.getClearanceStatus(id);
+    return redactSupervisorNotes(result, user?.role);
   }
 
   // GET /exit-interviews/:id/audit-log
@@ -152,13 +176,13 @@ export class ExitInterviewController {
 
   // POST /exit-interviews/:id/clear
   @Post(':id/clear')
-  clearDepartment(
+  async clearDepartment(
     @Param('id') id: string,
     @Body() dto: ClearDepartmentDto,
     @Req() req: Request,
   ): Promise<ClearanceStatusResult> {
     const user = req.user as RequestUser;
-    return this.exitInterviewService.clearDepartment(
+    const result = await this.exitInterviewService.clearDepartment(
       id,
       dto.department,
       user.email,
@@ -168,23 +192,25 @@ export class ExitInterviewController {
       dto.rehireEligible,
       dto.rehireIneligibleReason,
     );
+    return redactSupervisorNotes(result, user?.role);
   }
 
   // POST /exit-interviews/:id/reject
   @Post(':id/reject')
-  reject(
+  async reject(
     @Param('id') id: string,
     @Body() dto: RejectDepartmentDto,
     @Req() req: Request,
   ): Promise<ClearanceStatusResult> {
     const user = req.user as RequestUser;
-    return this.exitInterviewService.rejectDepartment(
+    const result = await this.exitInterviewService.rejectDepartment(
       id,
       dto.department,
       user.email,
       user.role,
       dto.reason,
     );
+    return redactSupervisorNotes(result, user?.role);
   }
 
   // PATCH /exit-interviews/:id/finalize

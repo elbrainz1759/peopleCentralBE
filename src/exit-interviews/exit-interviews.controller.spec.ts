@@ -203,12 +203,51 @@ describe('ExitInterviewController', () => {
         baseClearanceStatus,
       );
 
-      const result = await controller.getClearanceStatus('abc123');
+      const result = await controller.getClearanceStatus('abc123', mockReq());
 
       expect(mockExitInterviewService.getClearanceStatus).toHaveBeenCalledWith(
         'abc123',
       );
       expect(result).toEqual(baseClearanceStatus);
+    });
+
+    it('strips the Supervisor stage comment for a non-HR caller', async () => {
+      mockExitInterviewService.getClearanceStatus.mockResolvedValue({
+        ...baseClearanceStatus,
+        clearances: [
+          { id: 'c1', department: 'Supervisor', notes: 'Left on good terms' },
+          { id: 'c2', department: 'Operations', notes: 'Laptop returned' },
+        ],
+      });
+
+      const result: any = await controller.getClearanceStatus(
+        'abc123',
+        mockReq({ email: 'ops@mc.org', sub: 2, role: 'Operation' }),
+      );
+
+      expect(result.clearances[0].notes).toBeNull();
+      expect(result.clearances[1].notes).toBe('Laptop returned');
+    });
+
+    it('keeps the Supervisor stage comment visible to HR and Superadmin', async () => {
+      mockExitInterviewService.getClearanceStatus.mockResolvedValue({
+        ...baseClearanceStatus,
+        clearances: [
+          { id: 'c1', department: 'Supervisor', notes: 'Left on good terms' },
+        ],
+      });
+
+      const hrResult: any = await controller.getClearanceStatus(
+        'abc123',
+        mockReq({ email: 'hr@mc.org', sub: 1, role: 'HR' }),
+      );
+      expect(hrResult.clearances[0].notes).toBe('Left on good terms');
+
+      const adminResult: any = await controller.getClearanceStatus(
+        'abc123',
+        mockReq({ email: 'admin@mc.org', sub: 3, role: 'Superadmin' }),
+      );
+      expect(adminResult.clearances[0].notes).toBe('Left on good terms');
     });
   });
 

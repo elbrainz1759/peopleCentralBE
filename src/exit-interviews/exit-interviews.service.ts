@@ -84,7 +84,7 @@ export interface Clearance {
   action: 'Cleared' | 'Rejected';
   cleared_by: string;
   cleared_at: Date;
-  notes: string;
+  notes: string | null;
   item_name: string | null;
 }
 
@@ -192,6 +192,17 @@ const CLEARANCE_ROLES: Record<
 
 // ─── Notification message builders ────────────────────────────────────────────
 
+// Human-readable name for a stage/department key in outbound emails — the
+// DB/API keep using the internal "HR_Director" key (no distinct role for
+// it, see STAGE_ROLE_MAP above), but nobody outside the code should see
+// that underscore or the "Director" title in their inbox.
+function stageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    HR_Director: 'HR Lead',
+  };
+  return labels[stage] ?? stage;
+}
+
 function msgExitSubmitted(
   staffName: string,
   resignationDate: string,
@@ -211,16 +222,16 @@ function msgDepartmentCleared(
   nextStage: string,
 ): string {
   return (
-    `The exit interview for ${staffName} has been cleared by ${department}.\n\n` +
+    `The exit interview for ${staffName} has been cleared by ${stageLabel(department)}.\n\n` +
     (nextStage === 'Completed'
       ? `All clearances are now complete.`
-      : `It is now awaiting ${nextStage} clearance.`)
+      : `It is now awaiting ${stageLabel(nextStage)} clearance.`)
   );
 }
 
 function msgAwaitingClearance(staffName: string, stage: string): string {
   return (
-    `An exit interview for ${staffName} is awaiting your department's clearance (${stage}).\n\n` +
+    `An exit interview for ${staffName} is awaiting your department's clearance (${stageLabel(stage)}).\n\n` +
     `Please review and clear it at your earliest convenience.`
   );
 }
@@ -231,16 +242,16 @@ function msgDepartmentRejected(
   reason: string,
 ): string {
   return (
-    `${department} was unable to clear the exit interview for ${staffName}.\n\n` +
+    `${stageLabel(department)} was unable to clear the exit interview for ${staffName}.\n\n` +
     `Reason: ${reason}\n\n` +
-    `This stays flagged at the ${department} stage until HR follows up and the ` +
+    `This stays flagged at the ${stageLabel(department)} stage until HR follows up and the ` +
     `issue is resolved.`
   );
 }
 
 function msgFinalized(staffName: string): string {
   return (
-    `The exit interview for ${staffName} has been finalized and approved by the HR Director.\n\n` +
+    `The exit interview for ${staffName} has been finalized and approved by the HR Lead.\n\n` +
     `No further action is required.`
   );
 }
@@ -1122,7 +1133,7 @@ export class ExitInterviewService {
       await this.writeAuditLog(
         conn,
         id,
-        'Exit interview finalized by HR Director',
+        'Exit interview finalized by HR Lead',
         finalizedBy,
         {
           fromStage,
