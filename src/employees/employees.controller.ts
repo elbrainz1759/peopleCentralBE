@@ -33,7 +33,7 @@ export class EmployeeController {
     return this.employeeService.create(createEmployeeDto);
   }
 
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Post('bulk-upload')
   @HttpCode(HttpStatus.CREATED)
   bulkUpload(@Body() dto: BulkCreateEmployeeDto, @Req() req: Request) {
@@ -56,7 +56,7 @@ export class EmployeeController {
     return this.employeeService.findByUniqueId(unique_id);
   }
 
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Patch(':unique_id')
   update(
     @Param('unique_id') unique_id: string,
@@ -65,7 +65,7 @@ export class EmployeeController {
     return this.employeeService.update(unique_id, updateEmployeeDto);
   }
 
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Delete(':unique_id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('unique_id') unique_id: string) {

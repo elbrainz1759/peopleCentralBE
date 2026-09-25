@@ -24,7 +24,7 @@ export class CheckListItemsController {
   constructor(private readonly checkListItemsService: CheckListItemsService) {}
 
   // POST /check-list-items
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateCheckListItemDto, @Req() req: Request) {
@@ -51,14 +51,14 @@ export class CheckListItemsController {
   }
 
   // PATCH /check-list-items/:id
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateCheckListItemDto) {
     return this.checkListItemsService.update(id, dto);
   }
 
   // DELETE /check-list-items/:id
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string) {

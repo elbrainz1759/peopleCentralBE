@@ -430,6 +430,36 @@ describe('ExitInterviewService', () => {
       expect(stageUpdate![1][1]).toBe('Approved');
     });
 
+    it('throws ForbiddenException when plain HR (not HR Lead) tries to clear the HR_Director stage', async () => {
+      const conn = setupClearConn('HR_Director');
+      const service = await buildService(conn);
+
+      await expect(
+        service.clearDepartment(
+          'abc123',
+          'HR_Director',
+          'hr@mc.org',
+          [1],
+          'HR',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows the HR Lead role to clear the HR_Director stage', async () => {
+      const conn = setupClearConn('HR_Director');
+      const service = await buildService(conn);
+
+      await service.clearDepartment(
+        'abc123',
+        'HR_Director',
+        'lead@mc.org',
+        [1],
+        'HR Lead',
+      );
+
+      expect(conn.commit).toHaveBeenCalled();
+    });
+
     it('writes a single audit log entry per clearance', async () => {
       const conn = setupClearConn('Supervisor');
       const service = await buildService(conn);

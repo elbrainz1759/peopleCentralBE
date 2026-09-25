@@ -87,7 +87,7 @@ export class LeavesController {
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id  (HR edit)
   // ---------------------------------------------------------------------------
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Patch(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLeaveDto) {
     return this.leavesService.update(id, dto.reason);
@@ -96,7 +96,7 @@ export class LeavesController {
   // ---------------------------------------------------------------------------
   // PATCH /leaves/:id/review  (HR)
   // ---------------------------------------------------------------------------
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Patch(':id/review')
   review(
     @Param('id', ParseIntPipe) id: number,

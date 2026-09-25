@@ -43,7 +43,7 @@ export interface ExitInterview {
   finance_cleared: 'Yes' | 'No' | 'Pending';
   hr_director_cleared: 'Yes' | 'No' | 'Pending';
   // Confidential — set by the supervisor at their clearance step, redacted
-  // in the controller for anyone but HR/Superadmin.
+  // in the controller for anyone but HR/HR Lead/Superadmin.
   rehire_eligible?: 'Yes' | 'No' | null;
   rehire_ineligible_reason?: string | null;
   created_by: string;
@@ -167,35 +167,40 @@ const NEXT_STAGE: Record<ClearDepartment, { status: string; stage: string }> = {
 };
 
 // Maps an exit-interview stage name to the actual `users.role` value that
-// should be notified for it — the roles table uses "Operation" (singular)
-// and has no distinct "HR_Director" role, so that stage falls back to HR.
+// should be notified for it — the roles table uses "Operation" (singular).
+// HR_Director is the final sign-off stage, owned exclusively by the
+// "HR Lead" role (separate from, and senior to, plain "HR" — see
+// CLEARANCE_ROLES below).
 const STAGE_ROLE_MAP: Record<string, string> = {
   Operations: 'Operation',
   Finance: 'Finance',
   HR: 'HR',
-  HR_Director: 'HR',
+  HR_Director: 'HR Lead',
 };
 
 // Roles allowed to clear each department (Supervisor is excluded — that's
 // an ownership check against the exit interview's actual supervisor_id,
-// handled separately in clearDepartment()). HR/Superadmin can act on any
-// department's behalf.
+// handled separately in clearDepartment()). HR/HR Lead/Superadmin can act
+// on any non-final department's behalf. HR_Director (the final exit
+// sign-off) is deliberately narrower — "HR Lead" and "Superadmin" only,
+// not plain "HR" — matching @Roles('HR Lead', 'Superadmin') on PATCH
+// /exit-interviews/:id/finalize.
 const CLEARANCE_ROLES: Record<
   Exclude<ClearDepartment, 'Supervisor'>,
   string[]
 > = {
-  Operations: ['Operation', 'HR', 'Superadmin'],
-  Finance: ['Finance', 'HR', 'Superadmin'],
-  HR: ['HR', 'Superadmin'],
-  HR_Director: ['HR', 'Superadmin'],
+  Operations: ['Operation', 'HR', 'HR Lead', 'Superadmin'],
+  Finance: ['Finance', 'HR', 'HR Lead', 'Superadmin'],
+  HR: ['HR', 'HR Lead', 'Superadmin'],
+  HR_Director: ['HR Lead', 'Superadmin'],
 };
 
 // ─── Notification message builders ────────────────────────────────────────────
 
 // Human-readable name for a stage/department key in outbound emails — the
-// DB/API keep using the internal "HR_Director" key (no distinct role for
-// it, see STAGE_ROLE_MAP above), but nobody outside the code should see
-// that underscore or the "Director" title in their inbox.
+// DB/API keep using the internal "HR_Director" key (its real role is
+// "HR Lead", see STAGE_ROLE_MAP above), but nobody outside the code should
+// see that underscore or the old "Director" title in their inbox.
 function stageLabel(stage: string): string {
   const labels: Record<string, string> = {
     HR_Director: 'HR Lead',
@@ -266,15 +271,18 @@ export class ExitInterviewService {
   ) {}
 
   // ---------------------------------------------------------------------------
-  // PRIVATE — emails of active users holding a given role (case-insensitive)
+  // PRIVATE — emails of active users holding a given role, or any of a list
+  // of roles (case-insensitive)
   // ---------------------------------------------------------------------------
   private async resolveDeptEmails(
     conn: mysql.PoolConnection,
-    role: string,
+    role: string | string[],
   ): Promise<string[]> {
+    const roles = Array.isArray(role) ? role : [role];
+    const placeholders = roles.map(() => 'LOWER(?)').join(', ');
     const [rows] = await conn.query<mysql.RowDataPacket[]>(
-      `SELECT email FROM users WHERE LOWER(role) = LOWER(?) AND status = 'Active'`,
-      [role],
+      `SELECT email FROM users WHERE LOWER(role) IN (${placeholders}) AND status = 'Active'`,
+      roles,
     );
     return rows.map((r) => r.email as string);
   }
@@ -296,8 +304,8 @@ export class ExitInterviewService {
   // ---------------------------------------------------------------------------
   // PRIVATE — can this caller clear/reject the given department's stage?
   // Supervisor is an ownership check against the exit interview's actual
-  // supervisor_id; the other departments are static role checks. HR/
-  // Superadmin can act on any department's behalf either way.
+  // supervisor_id; the other departments are static role checks. HR/HR
+  // Lead/Superadmin can act on any department's behalf either way.
   // ---------------------------------------------------------------------------
   private async assertCanActOnDepartment(
     conn: mysql.PoolConnection,
@@ -307,7 +315,7 @@ export class ExitInterviewService {
     actorEmail: string,
   ): Promise<void> {
     if (department === 'Supervisor') {
-      if (!['HR', 'Superadmin'].includes(callerRole)) {
+      if (!['HR', 'HR Lead', 'Superadmin'].includes(callerRole)) {
         const supervisorEmail = await this.resolveEmployeeEmail(
           conn,
           supervisorId,
@@ -502,7 +510,7 @@ export class ExitInterviewService {
           conn,
           dto.supervisorId,
         );
-        const hrEmails = await this.resolveDeptEmails(conn, 'HR');
+        const hrEmails = await this.resolveDeptEmails(conn, ['HR', 'HR Lead']);
 
         const message = msgExitSubmitted(
           staffName,
@@ -916,7 +924,7 @@ export class ExitInterviewService {
         );
         const staffName = (staffRow?.full_name as string) ?? String(staffId);
         const staffEmail = (staffRow?.email as string) ?? null;
-        const hrEmails = await this.resolveDeptEmails(conn, 'HR');
+        const hrEmails = await this.resolveDeptEmails(conn, ['HR', 'HR Lead']);
 
         const clearedMessage = msgDepartmentCleared(
           staffName,
@@ -1061,7 +1069,7 @@ export class ExitInterviewService {
         );
         const staffName = (staffRow?.full_name as string) ?? String(staffId);
         const staffEmail = (staffRow?.email as string) ?? null;
-        const hrEmails = await this.resolveDeptEmails(conn, 'HR');
+        const hrEmails = await this.resolveDeptEmails(conn, ['HR', 'HR Lead']);
 
         const rejectedMailOpts = {
           message: msgDepartmentRejected(staffName, department, reason.trim()),
@@ -1100,7 +1108,7 @@ export class ExitInterviewService {
   }
 
   // ---------------------------------------------------------------------------
-  // PATCH /exit-interviews/:id/finalize  (HR Director sign-off)
+  // PATCH /exit-interviews/:id/finalize  (HR Lead sign-off)
   // ---------------------------------------------------------------------------
   async finalize(id: string, user: RequestUser): Promise<ExitInterviewDetail> {
     const conn = await this.pool.getConnection();
@@ -1150,7 +1158,7 @@ export class ExitInterviewService {
         const staffName =
           `${detail.staff_first_name} ${detail.staff_last_name}`.trim() ||
           String(detail.staff_id);
-        const hrEmails = await this.resolveDeptEmails(conn, 'HR');
+        const hrEmails = await this.resolveDeptEmails(conn, ['HR', 'HR Lead']);
 
         const mailOpts = {
           message: msgFinalized(staffName),

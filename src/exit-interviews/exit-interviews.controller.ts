@@ -26,9 +26,9 @@ import { RequestUser } from 'src/common/interfaces/request-user.interface';
 import { Roles } from '../decorators/roles.decorator';
 
 // Rehire eligibility is confidential — set by the supervisor at their
-// clearance step, visible only to HR/Superadmin. Every other reader
-// (including the employee's own "my requests" view, which reuses these
-// same endpoints) gets it stripped out.
+// clearance step, visible only to HR/HR Lead/Superadmin. Every other
+// reader (including the employee's own "my requests" view, which reuses
+// these same endpoints) gets it stripped out.
 const CONFIDENTIAL_FIELDS = [
   'rehire_eligible',
   'rehire_ineligible_reason',
@@ -38,7 +38,7 @@ function redact<T extends object>(
   record: T,
   callerRole: string | undefined,
 ): T {
-  if (callerRole && ['HR', 'Superadmin'].includes(callerRole)) return record;
+  if (callerRole && ['HR', 'HR Lead', 'Superadmin'].includes(callerRole)) return record;
   const copy = { ...record } as Record<string, unknown>;
   for (const field of CONFIDENTIAL_FIELDS) delete copy[field];
   return copy as T;
@@ -53,7 +53,7 @@ function redactSupervisorNotes(
   result: ClearanceStatusResult,
   callerRole: string | undefined,
 ): ClearanceStatusResult {
-  if (callerRole && ['HR', 'Superadmin'].includes(callerRole)) return result;
+  if (callerRole && ['HR', 'HR Lead', 'Superadmin'].includes(callerRole)) return result;
   if (!result?.clearances) return result;
   return {
     ...result,
@@ -213,8 +213,11 @@ export class ExitInterviewController {
     return redactSupervisorNotes(result, user?.role);
   }
 
-  // PATCH /exit-interviews/:id/finalize
-  @Roles('HR', 'Superadmin')
+  // PATCH /exit-interviews/:id/finalize — HR Lead sign-off. Deliberately
+  // excludes plain 'HR' — the final exit approval is HR Lead's exclusive
+  // authority, separate from ordinary HR staff (see CLEARANCE_ROLES.HR_Director
+  // in the service for the matching /clear and /reject rule).
+  @Roles('HR Lead', 'Superadmin')
   @Patch(':id/finalize')
   finalize(
     @Param('id') id: string,
@@ -236,7 +239,7 @@ export class ExitInterviewController {
   }
 
   // DELETE /exit-interviews/:id
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Delete(':id')
   remove(@Param('id') id: string): Promise<{ message: string }> {
     return this.exitInterviewService.remove(id);

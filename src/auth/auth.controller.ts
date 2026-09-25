@@ -26,7 +26,7 @@ interface RequestMetadata {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Roles('HR', 'Superadmin')
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Post('approve')
   approveUser(@Body() dto: ApproveUserDto) {
     return this.authService.approveUser(
