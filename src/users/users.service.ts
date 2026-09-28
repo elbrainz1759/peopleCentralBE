@@ -23,6 +23,7 @@ export interface UserRow extends mysql.RowDataPacket {
   staff_id?: number | null;
   designation?: string | null;
   department?: string | null;
+  department_name?: string | null;
   location?: string | null;
 }
 
@@ -45,9 +46,11 @@ export class UsersService {
         e.staff_id,
         e.designation,
         e.department,
+        d.name AS department_name,
         e.location
       FROM users u
       LEFT JOIN employee e ON e.email = u.email
+      LEFT JOIN departments d ON d.unique_id = e.department
       WHERE u.status IS NULL OR u.status != 'Deleted'
       ORDER BY u.id DESC`,
     );
@@ -69,9 +72,11 @@ export class UsersService {
         e.staff_id,
         e.designation,
         e.department,
+        d.name AS department_name,
         e.location
       FROM users u
       LEFT JOIN employee e ON e.email = u.email
+      LEFT JOIN departments d ON d.unique_id = e.department
       WHERE u.unique_id = ?`,
       [unique_id],
     );

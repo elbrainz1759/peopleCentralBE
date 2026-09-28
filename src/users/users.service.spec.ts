@@ -21,6 +21,31 @@ describe('UsersService', () => {
       mockPool.query.mockResolvedValue([[]]);
       await expect(service.findOne('u')).rejects.toThrow(NotFoundException);
     });
+
+    it('joins departments to resolve a readable name instead of the raw department FK', async () => {
+      mockPool.query.mockResolvedValue([
+        [{ id: 1, unique_id: 'u', department: 'dept-uid-1', department_name: 'Finance' }],
+      ]);
+
+      const result = await service.findOne('u');
+
+      const query = mockPool.query.mock.calls[0][0] as string;
+      expect(query).toContain('LEFT JOIN departments');
+      expect(query).toContain('department_name');
+      expect(result.department_name).toBe('Finance');
+    });
+  });
+
+  describe('findAll', () => {
+    it('joins departments to resolve a readable name instead of the raw department FK', async () => {
+      mockPool.query.mockResolvedValue([[]]);
+
+      await service.findAll();
+
+      const query = mockPool.query.mock.calls[0][0] as string;
+      expect(query).toContain('LEFT JOIN departments');
+      expect(query).toContain('department_name');
+    });
   });
 
 describe('update', () => {
