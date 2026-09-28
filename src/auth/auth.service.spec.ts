@@ -344,6 +344,7 @@ describe('AuthService', () => {
             is_revoked: 'No',
           }],
         ])                                             // sessions
+        .mockResolvedValueOnce([[{ ...mockUser, status: 'Active' }]]) // fresh user re-fetch
         .mockResolvedValueOnce([{ affectedRows: 1 }]) // DELETE old session
         .mockResolvedValueOnce([{ insertId: 1 }]);    // INSERT new session
 
@@ -359,6 +360,43 @@ describe('AuthService', () => {
         accessToken: 'new-access-token',
         refreshToken: 'new-refresh-token',
       });
+    });
+
+    it('picks up a role change made mid-session instead of re-issuing the stale role', async () => {
+      (jwt.verify as jest.Mock).mockReturnValue({ ...mockUser, role: 'Finance' });
+
+      mockPool.query
+        .mockResolvedValueOnce([
+          [{ id: 1, refresh_token_hash: 'old-hash', user_agent: 'jest', ip_address: '127.0.0.1', is_revoked: 'No' }],
+        ])
+        .mockResolvedValueOnce([[{ ...mockUser, role: 'HR', status: 'Active' }]]) // role now HR in the DB
+        .mockResolvedValueOnce([{ affectedRows: 1 }])
+        .mockResolvedValueOnce([{ insertId: 1 }]);
+
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (bcrypt.hash as jest.Mock).mockResolvedValue('new-refresh-hash');
+      (jwt.sign as jest.Mock).mockImplementation((payload) => JSON.stringify(payload));
+
+      await service.refresh('old-refresh-token');
+
+      const signedPayloads = (jwt.sign as jest.Mock).mock.calls.map((c) => c[0]);
+      expect(signedPayloads.every((p) => p.role === 'HR')).toBe(true);
+    });
+
+    it('throws UnauthorizedException when the account was deactivated mid-session', async () => {
+      (jwt.verify as jest.Mock).mockReturnValue(mockUser);
+
+      mockPool.query
+        .mockResolvedValueOnce([
+          [{ id: 1, refresh_token_hash: 'old-hash', user_agent: 'jest', ip_address: '127.0.0.1', is_revoked: 'No' }],
+        ])
+        .mockResolvedValueOnce([[{ ...mockUser, status: 'Inactive' }]]);
+
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await expect(service.refresh('old-refresh-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('throws UnauthorizedException when token reuse is detected', async () => {

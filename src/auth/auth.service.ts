@@ -351,6 +351,25 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token reuse detected');
     }
 
+    // Re-fetch the current account from the DB rather than trusting the old
+    // token's payload — a refresh token lives for 7 days, and every refresh
+    // was just re-signing whatever role/identity was baked in at the
+    // original login, so a role change (or deactivation) made mid-session
+    // would never take effect until the refresh token itself expired.
+    const [rows] = await this.pool.query<UserRow[]>(
+      'SELECT a.*, e.staff_id, e.first_name AS first_name, e.last_name AS last_name FROM users a LEFT JOIN employee e ON a.email = e.email WHERE a.unique_id = ?',
+      [payload.unique_id],
+    );
+    const current = rows[0];
+    if (!current) {
+      throw new UnauthorizedException('Account no longer exists');
+    }
+    if (current.status === 'Inactive') {
+      throw new UnauthorizedException(
+        'This account has been deactivated. Please contact HR.',
+      );
+    }
+
     //  DELETE old session immediately before creating new one
     await this.pool.query('DELETE FROM user_sessions WHERE id = ?', [
       matchedSession.id,
@@ -358,13 +377,13 @@ export class AuthService {
 
     const newRefreshToken = jwt.sign(
       {
-        id: payload.id,
-        email: payload.email,
-        role: payload.role,
-        unique_id: payload.unique_id,
-        first_name: payload.first_name,
-        last_name: payload.last_name,
-        staff_id: payload.staff_id,
+        id: current.id,
+        email: current.email,
+        role: current.role,
+        unique_id: current.unique_id,
+        first_name: current.first_name,
+        last_name: current.last_name,
+        staff_id: current.staff_id,
       },
       process.env.JWT_REFRESH_SECRET!,
       { expiresIn: '7d' },
@@ -373,11 +392,11 @@ export class AuthService {
 
     //  INSERT new session
     await this.pool.query(
-      `INSERT INTO user_sessions 
+      `INSERT INTO user_sessions
      (user_id, refresh_token_hash, user_agent, ip_address, expires_at)
      VALUES (?, ?, ?, ?, ?)`,
       [
-        payload.unique_id,
+        current.unique_id,
         newHash,
         matchedSession.user_agent,
         matchedSession.ip_address,
@@ -387,10 +406,10 @@ export class AuthService {
 
     const newAccessToken = jwt.sign(
       {
-        id: payload.id,
-        email: payload.email,
-        role: payload.role,
-        unique_id: payload.unique_id,
+        id: current.id,
+        email: current.email,
+        role: current.role,
+        unique_id: current.unique_id,
       },
       process.env.JWT_SECRET!,
       { expiresIn: '15m' },
