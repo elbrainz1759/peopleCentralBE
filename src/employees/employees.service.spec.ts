@@ -121,6 +121,63 @@ describe('EmployeesService', () => {
 
       expect(result).toEqual({ id: 12, ...baseDto });
     });
+
+    it('resets a deactivated employee back to Pending when they re-register, so HR sees them again', async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ unique_id: 'abc', status: 'Inactive' }]]) // matched, was deactivated
+        .mockResolvedValueOnce([{ affectedRows: 1 }]) // update()'s field UPDATE
+        .mockResolvedValueOnce([[{ unique_id: 'abc', email: baseDto.email }]]) // update()'s re-fetch
+        .mockResolvedValueOnce([{ affectedRows: 1 }]) // status reset to Pending
+        .mockResolvedValueOnce([[{ email: 'hr1@mercycorps.org' }]]); // HR lookup
+
+      await service.create(baseDto);
+
+      const statusResetCall = mockPool.query.mock.calls[3];
+      expect(statusResetCall[0] as string).toContain(
+        'UPDATE employee SET status = "Pending"',
+      );
+      expect(statusResetCall[1]).toEqual(['abc']);
+    });
+
+    it("leaves an Active employee's status untouched on re-registration", async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ unique_id: 'abc', status: 'Active' }]])
+        .mockResolvedValueOnce([{ affectedRows: 1 }])
+        .mockResolvedValueOnce([[{ unique_id: 'abc', email: baseDto.email }]])
+        .mockResolvedValueOnce([[{ email: 'hr1@mercycorps.org' }]]);
+
+      await service.create(baseDto);
+
+      const allQueries = mockPool.query.mock.calls.map((c) => c[0] as string);
+      expect(
+        allQueries.some((q) => q.includes('SET status = "Pending"')),
+      ).toBe(false);
+    });
+  });
+
+  describe('remove', () => {
+    it('deactivates both the employee record and their login account', async () => {
+      mockPool.query
+        .mockResolvedValueOnce([
+          [{ unique_id: 'abc', email: 'jane.doe@mercycorps.org' }],
+        ]) // findByUniqueId
+        .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE employee
+        .mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE users
+
+      const result = await service.remove('abc');
+
+      expect(result.message).toContain('successfully deactivated');
+      const usersUpdateCall = mockPool.query.mock.calls[2];
+      expect(usersUpdateCall[0] as string).toContain('UPDATE users');
+      expect(usersUpdateCall[1]).toEqual(['jane.doe@mercycorps.org']);
+    });
+
+    it('throws NotFoundException when the employee does not exist', async () => {
+      mockPool.query.mockResolvedValueOnce([[]]);
+      await expect(service.remove('missing')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
   });
 
   describe('create — failure handling', () => {

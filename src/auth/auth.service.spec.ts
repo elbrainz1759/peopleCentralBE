@@ -132,6 +132,137 @@ describe('AuthService', () => {
       const supervisorQuery = mockPool.query.mock.calls[1][0] as string;
       expect(supervisorQuery).not.toContain('Active');
     });
+
+    it('throws BadRequestException when an Active user already exists for this email', async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'User' }]])
+        .mockResolvedValueOnce([[{ unique_id: 'sup-uid-1' }]]);
+
+      mockConnection.query
+        .mockResolvedValueOnce([[{ id: 1 }]]) // employee found
+        .mockResolvedValueOnce([
+          [{ id: 5, unique_id: 'old-uid', status: 'Active' }],
+        ]); // existing Active user
+
+      await expect(
+        service.approveUser('user@mercycorps.org', 'User', 'boss@mercycorps.org'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockConnection.rollback).toHaveBeenCalled();
+    });
+
+    it('reactivates an Inactive user row instead of inserting a new one, keeping the same unique_id', async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'HR' }]])
+        .mockResolvedValueOnce([[{ unique_id: 'sup-uid-1' }]]);
+
+      mockConnection.query
+        .mockResolvedValueOnce([[{ id: 1 }]]) // employee found
+        .mockResolvedValueOnce([
+          [{ id: 5, unique_id: 'old-uid-123', status: 'Inactive' }],
+        ]) // existing Inactive user — reactivation path
+        .mockResolvedValueOnce([{ affectedRows: 1 }]) // UPDATE users (reactivate)
+        .mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE employee
+
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
+      mockMailService.sendCaseNotification.mockResolvedValue(undefined);
+
+      const result = await service.approveUser(
+        'user@mercycorps.org',
+        'HR',
+        'boss@mercycorps.org',
+      );
+
+      expect(result.message).toBe('User approved successfully');
+      expect(result.unique_id).toBe('old-uid-123');
+
+      const reactivateCall = mockConnection.query.mock.calls[2];
+      expect(reactivateCall[0] as string).toContain('UPDATE users');
+      expect(reactivateCall[0] as string).toContain('status = "Active"');
+      expect(mockConnection.commit).toHaveBeenCalled();
+    });
+
+    it("doesn't roll back or report failure when the welcome email fails to send", async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ name: 'User' }]])
+        .mockResolvedValueOnce([[{ unique_id: 'sup-uid-1' }]]);
+
+      mockConnection.query
+        .mockResolvedValueOnce([[{ id: 1 }]])
+        .mockResolvedValueOnce([[]])
+        .mockResolvedValueOnce([{ insertId: 1 }])
+        .mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
+      mockMailService.sendCaseNotification.mockRejectedValue(
+        new Error('SMTP down'),
+      );
+
+      const result = await service.approveUser(
+        'user@mercycorps.org',
+        'User',
+        'boss@mercycorps.org',
+      );
+
+      expect(result.message).toBe('User approved successfully');
+      expect(mockConnection.commit).toHaveBeenCalled();
+      expect(mockConnection.rollback).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── resetUserPassword ──────────────────────────────────────────────────────
+
+  describe('resetUserPassword', () => {
+    it('throws BadRequestException for a non-mercycorps.org email', async () => {
+      await expect(
+        service.resetUserPassword('user@gmail.com'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when no account exists for the email', async () => {
+      mockPool.query.mockResolvedValueOnce([[]]);
+
+      await expect(
+        service.resetUserPassword('user@mercycorps.org'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('emails the new password and updates it, in that order', async () => {
+      mockPool.query
+        .mockResolvedValueOnce([[{ id: 1 }]]) // user found
+        .mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE password
+
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-new-password');
+      mockMailService.sendCaseNotification.mockResolvedValue(undefined);
+
+      const result = await service.resetUserPassword('user@mercycorps.org');
+
+      expect(result.message).toBe('New password sent to user@mercycorps.org');
+      expect(mockMailService.sendCaseNotification).toHaveBeenCalled();
+
+      const sendOrder =
+        mockMailService.sendCaseNotification.mock.invocationCallOrder[0];
+      const updateCall = mockPool.query.mock.calls[1];
+      const updateOrder = mockPool.query.mock.invocationCallOrder[1];
+      expect(updateCall[0] as string).toContain('UPDATE users');
+      expect(sendOrder).toBeLessThan(updateOrder);
+    });
+
+    it('does not change the password when the email fails to send', async () => {
+      mockPool.query.mockResolvedValueOnce([[{ id: 1 }]]); // user found
+
+      (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-new-password');
+      mockMailService.sendCaseNotification.mockRejectedValue(
+        new Error('SMTP down'),
+      );
+
+      await expect(
+        service.resetUserPassword('user@mercycorps.org'),
+      ).rejects.toThrow(BadRequestException);
+
+      // Only the lookup query ran — no UPDATE was ever issued.
+      expect(mockPool.query).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ─── login ───────────────────────────────────────────────────────────────────
@@ -175,6 +306,20 @@ describe('AuthService', () => {
         accessToken: 'access-token',
         refreshToken: 'refresh-token',
       });
+    });
+
+    it('throws UnauthorizedException when the account has been deactivated, even with correct credentials', async () => {
+      mockPool.query.mockResolvedValueOnce([
+        [{ ...mockUser, password: 'hash', status: 'Inactive' }],
+      ]);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await expect(
+        service.login('user@mercycorps.org', 'password', {
+          userAgent: 'jest',
+          ip: '127.0.0.1',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

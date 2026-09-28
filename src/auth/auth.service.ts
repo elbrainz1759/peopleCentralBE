@@ -23,6 +23,7 @@ interface UserRow extends mysql.RowDataPacket {
   first_name?: string | null;
   last_name?: string | null;
   staff_id?: number | null;
+  status?: string | null;
 }
 
 interface SessionRow extends mysql.RowDataPacket {
@@ -114,25 +115,38 @@ export class AuthService {
         throw new BadRequestException('No employee found with this email');
       }
 
-      // Check user doesn't already exist
+      // A user row may already exist for this email — either it's Active
+      // (a genuine duplicate approval, rejected below) or Inactive (this
+      // person was deactivated and is now being re-approved after
+      // re-registering). Reactivate the existing row rather than reject
+      // it, so their old unique_id stays stable for anything referencing it.
       const [userRows] = await connection.query<UserRow[]>(
-        'SELECT id FROM users WHERE email = ?',
+        'SELECT id, unique_id, status FROM users WHERE email = ?',
         [email],
       );
-      if (userRows.length > 0) {
+      if (userRows.length > 0 && userRows[0].status !== 'Inactive') {
         throw new BadRequestException('User already exists for this email');
       }
+      const isReactivation = userRows.length > 0;
 
       // Generate credentials
       const password = randomBytes(16).toString('hex').slice(0, 12);
       const hashed = await bcrypt.hash(password, 10);
-      const unique_id = randomBytes(16).toString('hex');
+      const unique_id = isReactivation
+        ? (userRows[0].unique_id as string)
+        : randomBytes(16).toString('hex');
 
-      // Insert user
-      await connection.query<mysql.ResultSetHeader>(
-        'INSERT INTO users (email, password, role, unique_id, passChanged, status) VALUES (?, ?, ?, ?, ?, ?)',
-        [email, hashed, role, unique_id, 0, 'Active'],
-      );
+      if (isReactivation) {
+        await connection.query<mysql.ResultSetHeader>(
+          'UPDATE users SET password = ?, role = ?, passChanged = 0, status = "Active" WHERE email = ?',
+          [hashed, role, email],
+        );
+      } else {
+        await connection.query<mysql.ResultSetHeader>(
+          'INSERT INTO users (email, password, role, unique_id, passChanged, status) VALUES (?, ?, ?, ?, ?, ?)',
+          [email, hashed, role, unique_id, 0, 'Active'],
+        );
+      }
 
       // Activate employee
       await connection.query<mysql.ResultSetHeader>(
@@ -142,13 +156,20 @@ export class AuthService {
 
       await connection.commit();
 
-      await this.mailService.sendCaseNotification({
-        to: email,
-        subject: 'Welcome to PeopleCentral — Your Account is Ready',
-        subjectFull: 'Your Account Has Been Created',
-        message: `Your PeopleCentral account has been created successfully. Your temporary password is: ${password} Please log in and change your password immediately`,
-        siteName: 'PeopleCentral',
-      });
+      // Non-fatal — the account is already committed at this point. A mail
+      // failure here must not roll back (there's nothing left to roll back)
+      // or report the approval as failed when it actually succeeded.
+      try {
+        await this.mailService.sendCaseNotification({
+          to: email,
+          subject: 'Welcome to PeopleCentral — Your Account is Ready',
+          subjectFull: 'Your Account Has Been Created',
+          message: `Your PeopleCentral account has been created successfully. Your temporary password is: ${password} Please log in and change your password immediately`,
+          siteName: 'PeopleCentral',
+        });
+      } catch (mailErr) {
+        console.error('approveUser welcome-email error:', mailErr);
+      }
 
       return { message: 'User approved successfully', unique_id, password };
     } catch (err) {
@@ -161,6 +182,54 @@ export class AuthService {
     } finally {
       connection.release();
     }
+  }
+
+  // HR-triggered reset: generates a fresh temporary password and emails it
+  // to the account holder. Unlike resetPassword() below (self-service,
+  // requires the user's own JWT), this is for HR resetting someone else's
+  // forgotten/locked-out password — @Roles('HR','HR Lead','Superadmin')
+  // gates it at the controller.
+  async resetUserPassword(email: string) {
+    if (!email.endsWith('@mercycorps.org')) {
+      throw new BadRequestException('Email must be a mercycorps.org address');
+    }
+
+    const [rows] = await this.pool.query<UserRow[]>(
+      'SELECT id FROM users WHERE email = ?',
+      [email],
+    );
+    if (rows.length === 0) {
+      throw new BadRequestException('No account found for this email');
+    }
+
+    const password = randomBytes(16).toString('hex').slice(0, 12);
+    const hashed = await bcrypt.hash(password, 10);
+
+    // Send the new password BEFORE touching the DB. If the email fails,
+    // the old password stays valid and nothing is broken — if we updated
+    // the password first and the send then failed, the person would be
+    // locked out with no way to learn their new password.
+    try {
+      await this.mailService.sendCaseNotification({
+        to: email,
+        subject: 'Mercy Corps PeopleCentral — Password Reset',
+        subjectFull: 'Your Password Has Been Reset',
+        message: `Your PeopleCentral password has been reset by HR. Your new temporary password is: ${password}\n\nPlease log in and change your password immediately.`,
+        siteName: 'PeopleCentral',
+      });
+    } catch (err) {
+      console.error('resetUserPassword mail error:', err);
+      throw new BadRequestException(
+        'Could not email the new password — the password was not changed. Please try again.',
+      );
+    }
+
+    await this.pool.query<mysql.ResultSetHeader>(
+      'UPDATE users SET password = ?, passChanged = 0 WHERE email = ?',
+      [hashed, email],
+    );
+
+    return { message: `New password sent to ${email}` };
   }
 
   async login(email: string, password: string, metadata: RequestMetadata) {
@@ -177,6 +246,14 @@ export class AuthService {
 
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) throw new UnauthorizedException('Invalid credentials');
+
+      // Deactivating an employee (DELETE /employees/:id) flips this to
+      // "Inactive" — without this check that account could still log in.
+      if (user.status === 'Inactive') {
+        throw new UnauthorizedException(
+          'This account has been deactivated. Please contact HR.',
+        );
+      }
 
       const payload = {
         id: user.id,

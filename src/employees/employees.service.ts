@@ -127,10 +127,10 @@ export class EmployeeService {
 
     // If the employee already exists (e.g. seeded via a staff import),
     // registering just updates their record instead of failing on the
-    // duplicate email/staff_id constraint. Status and supervisor are left
-    // untouched — this form doesn't collect either.
+    // duplicate email/staff_id constraint. Supervisor is left untouched —
+    // this form doesn't collect it.
     const [existingRows] = await this.pool.query<EmployeeRow[]>(
-      'SELECT unique_id FROM employee WHERE email = ?',
+      'SELECT unique_id, status FROM employee WHERE email = ?',
       [email],
     );
 
@@ -145,6 +145,17 @@ export class EmployeeService {
         programId,
         countryId,
       });
+
+      // A previously deactivated employee re-registering needs to re-enter
+      // the HR approval queue — otherwise they're stuck "Inactive" forever,
+      // invisible on the Pending Approvals list, with no way back in. An
+      // already-Active or already-Pending record is left as-is.
+      if (existingRows[0].status === 'Inactive') {
+        await this.pool.query(
+          'UPDATE employee SET status = "Pending" WHERE unique_id = ?',
+          [existingRows[0].unique_id],
+        );
+      }
 
       await this.notifyHR(
         'Existing Staff Record Updated via Registration',
@@ -603,11 +614,21 @@ export class EmployeeService {
 
   async remove(unique_id: string) {
     try {
-      await this.findByUniqueId(unique_id);
+      const employee = await this.findByUniqueId(unique_id);
 
       await this.pool.query<mysql.ResultSetHeader>(
         'UPDATE employee SET status = "Inactive" WHERE unique_id = ?',
         [unique_id],
+      );
+
+      // Deactivating an employee must also revoke their login access —
+      // otherwise a "deactivated" account can still authenticate, since
+      // this table and `users` are separate. Non-fatal: most Pending
+      // employees never had a users row created for them in the first
+      // place, so 0 rows affected here is the normal/expected case.
+      await this.pool.query<mysql.ResultSetHeader>(
+        'UPDATE users SET status = "Inactive" WHERE email = ?',
+        [employee.email],
       );
 
       return {

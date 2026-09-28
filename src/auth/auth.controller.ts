@@ -7,6 +7,7 @@ import { RequestRefreshDto } from './dto/refresh.dto';
 import { Public } from '../decorators/public.decorator';
 import { RequestMetadata } from '../decorators/requestMetadata.decorator';
 import { ApproveUserDto } from './dto/approveUser.dto';
+import { ResetUserPasswordDto } from './dto/resetUserPassword.dto';
 import { RequestUser } from 'src/common/interfaces/request-user.interface';
 import { Roles } from '../decorators/roles.decorator';
 import type { Request } from 'express';
@@ -34,6 +35,12 @@ export class AuthController {
       dto.role,
       dto.supervisorEmail,
     );
+  }
+
+  @Roles('HR', 'HR Lead', 'Superadmin')
+  @Post('reset-user-password')
+  resetUserPassword(@Body() dto: ResetUserPasswordDto) {
+    return this.authService.resetUserPassword(dto.email);
   }
 
   @Public()
