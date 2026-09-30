@@ -18,7 +18,10 @@ export interface Location {
   id: number;
   unique_id: string;
   name: string;
+  // Resolved country name for display — the raw FK is exposed separately
+  // as country_id since this column name is reused for both.
   country: string;
+  country_id: string;
   created_by: string;
   created_at: Date;
 }
@@ -118,7 +121,7 @@ export class LocationsService {
       );
       const total = countRow['total'] as number;
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT a.*, b.name AS country FROM locations a
+        `SELECT a.*, a.country AS country_id, b.name AS country FROM locations a
    LEFT JOIN countries b ON a.country = b.unique_id
    ${baseWhere}${query.search ? ' AND (a.name LIKE ? OR a.unique_id LIKE ?)' : ''}
    ORDER BY a.created_at DESC
@@ -147,7 +150,7 @@ export class LocationsService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT a.*, b.name AS country FROM locations a LEFT JOIN countries b ON a.country = b.unique_id WHERE a.unique_id = ?',
+        'SELECT a.*, a.country AS country_id, b.name AS country FROM locations a LEFT JOIN countries b ON a.country = b.unique_id WHERE a.unique_id = ?',
         [id],
       );
       if (!rows.length)
@@ -168,7 +171,7 @@ export class LocationsService {
     const conn = await this.pool.getConnection();
     try {
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
-        'SELECT a.*, b.name AS country FROM locations a LEFT JOIN countries b ON a.country = b.unique_id WHERE a.unique_id = ?',
+        'SELECT a.*, a.country AS country_id, b.name AS country FROM locations a LEFT JOIN countries b ON a.country = b.unique_id WHERE a.unique_id = ?',
         [uniqueId],
       );
       if (!rows.length) {

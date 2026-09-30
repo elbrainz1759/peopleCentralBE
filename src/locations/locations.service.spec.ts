@@ -126,6 +126,18 @@ describe('create', () => {
       expect(result.meta.page).toBe(1);
       expect(result.meta.limit).toBe(10);
     });
+
+    it('exposes the raw country FK as country_id alongside the resolved country name', async () => {
+      mockConn.query
+        .mockResolvedValueOnce([[{ total: 0 }]])
+        .mockResolvedValueOnce([[]]);
+
+      await service.findAll({ page: 1, limit: 10 } as any);
+
+      const dataQuery = mockConn.query.mock.calls[1][0] as string;
+      expect(dataQuery).toContain('a.country AS country_id');
+      expect(dataQuery).toContain('b.name AS country');
+    });
   });
 
   // ─── findOne ─────────────────────────────────────────────────────────────────
@@ -149,6 +161,18 @@ describe('create', () => {
       mockConn.query.mockResolvedValueOnce([[]]);
 
       await expect(service.findOne('loc-missing')).rejects.toThrow(NotFoundException);
+    });
+
+    it('requests country_id alongside the resolved country name', async () => {
+      mockConn.query.mockResolvedValueOnce([
+        [{ id: 1, unique_id: 'loc-uid-1', name: 'Abuja', country: 'Nigeria', country_id: 'country-uid-1' }],
+      ]);
+
+      const result = await service.findOne('loc-uid-1');
+
+      expect(result.country_id).toBe('country-uid-1');
+      const query = mockConn.query.mock.calls[0][0] as string;
+      expect(query).toContain('a.country AS country_id');
     });
   });
 
