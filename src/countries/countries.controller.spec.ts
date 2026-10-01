@@ -13,6 +13,7 @@ describe('CountriesController', () => {
   const mockCountriesService = {
     create: jest.fn(),
     findAll: jest.fn(),
+    findScoped: jest.fn(),
     findByUniqueId: jest.fn(),
     findOne: jest.fn(),
     update: jest.fn(),
@@ -78,6 +79,21 @@ describe('CountriesController', () => {
 
       expect(result).toEqual(expected);
       expect(service.findAll).toHaveBeenCalledWith(query);
+    });
+  });
+
+  // ─── findScoped ──────────────────────────────────────────────────────────────
+
+  describe('findScoped', () => {
+    it('calls service.findScoped with the user extracted from req', async () => {
+      const expected = [{ id: 1, unique_id: 'uid-1', name: 'Nigeria' }];
+
+      mockCountriesService.findScoped.mockResolvedValue(expected);
+
+      const result = await controller.findScoped(mockRequest as any);
+
+      expect(result).toEqual(expected);
+      expect(service.findScoped).toHaveBeenCalledWith(mockUser);
     });
   });
 

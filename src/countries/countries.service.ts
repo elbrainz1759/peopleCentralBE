@@ -115,6 +115,35 @@ export class CountriesService {
     }
   }
 
+  // GET /countries/scoped — the countries this caller may create org-structure
+  // entities (locations, etc.) in. Superadmin gets every active country,
+  // since they operate across the whole org; everyone else is confined to
+  // their own employee record's country, so e.g. an HR user in Nigeria can't
+  // accidentally (or deliberately) create a location under Kenya.
+  async findScoped(user: RequestUser): Promise<Country[]> {
+    const conn = await this.pool.getConnection();
+    try {
+      if (user.role === 'Superadmin') {
+        const [rows] = await conn.query<mysql.RowDataPacket[]>(
+          'SELECT * FROM countries WHERE status = "Active" ORDER BY name ASC',
+        );
+        return rows as Country[];
+      }
+
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT c.* FROM employee e
+         JOIN countries c ON c.unique_id = e.country
+         WHERE e.email = ? AND c.status = 'Active'`,
+        [user.email],
+      );
+      return rows as Country[];
+    } catch (err) {
+      throw new InternalServerErrorException(err);
+    } finally {
+      conn.release();
+    }
+  }
+
   // GET /countries/:id
   async findOne(unique_id: string): Promise<Country> {
     const conn = await this.pool.getConnection();

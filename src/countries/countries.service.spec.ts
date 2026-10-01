@@ -156,6 +156,49 @@ describe('CountriesService', () => {
     });
   });
 
+  // ─── findScoped ──────────────────────────────────────────────────────────────
+
+  describe('findScoped', () => {
+    it('returns every active country for a Superadmin', async () => {
+      const rows = [
+        { id: 1, unique_id: 'uid-1', name: 'Nigeria' },
+        { id: 2, unique_id: 'uid-2', name: 'Kenya' },
+      ];
+      mockConn.query.mockResolvedValueOnce([rows]);
+
+      const result = await service.findScoped({
+        ...mockUser,
+        role: 'Superadmin',
+      });
+
+      expect(result).toEqual(rows);
+      expect(mockConn.query).toHaveBeenCalledTimes(1);
+      const query = mockConn.query.mock.calls[0][0] as string;
+      expect(query).not.toContain('employee');
+    });
+
+    it("confines a non-Superadmin caller to their own employee record's country", async () => {
+      const rows = [{ id: 1, unique_id: 'uid-1', name: 'Nigeria' }];
+      mockConn.query.mockResolvedValueOnce([rows]);
+
+      const result = await service.findScoped({ ...mockUser, role: 'HR' });
+
+      expect(result).toEqual(rows);
+      const [query, params] = mockConn.query.mock.calls[0];
+      expect(query as string).toContain('JOIN countries');
+      expect(query as string).toContain('e.email = ?');
+      expect(params).toEqual([mockUser.email]);
+    });
+
+    it('returns an empty list when the caller has no country on their employee record', async () => {
+      mockConn.query.mockResolvedValueOnce([[]]);
+
+      const result = await service.findScoped({ ...mockUser, role: 'User' });
+
+      expect(result).toEqual([]);
+    });
+  });
+
   // ─── findOne ─────────────────────────────────────────────────────────────────
 
   describe('findOne', () => {

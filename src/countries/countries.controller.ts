@@ -40,6 +40,16 @@ export class CountriesController {
     return this.countriesService.findAll(query);
   }
 
+  // GET /countries/scoped — countries this caller may use when creating
+  // org-structure entities (e.g. a location): just their own country,
+  // unless they're Superadmin. Authenticated (not @Public — needs to know
+  // who's asking) and must come before :id to avoid a route clash.
+  @Get('scoped')
+  findScoped(@Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.countriesService.findScoped(user);
+  }
+
   // GET /countries/unique/:uniqueId — must be before :id to avoid route clash
   @Get('unique/:uniqueId')
   findByUniqueId(@Param('uniqueId') uniqueId: string) {
