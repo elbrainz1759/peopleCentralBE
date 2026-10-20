@@ -50,6 +50,7 @@ function q(conn: ReturnType<typeof makeConn>, responses: unknown[]): void {
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const mockUser: RequestUser = { email: 'hr@mc.org', sub: 1, role: 'hr' };
+const privilegedUser: RequestUser = { ...mockUser, role: 'HR' };
 
 const baseInterview = {
   id: 1,
@@ -182,7 +183,7 @@ describe('ExitInterviewService', () => {
       q(conn, [[[{ total: 1 }]], [[baseDetail]]]);
 
       const service = await buildService(conn);
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ page: 1, limit: 10 }, privilegedUser);
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
@@ -193,7 +194,7 @@ describe('ExitInterviewService', () => {
       q(conn, [[[{ total: 0 }]], [[]]]);
 
       const service = await buildService(conn);
-      await service.findAll({ page: 1, limit: 10, search: 'John' });
+      await service.findAll({ page: 1, limit: 10, search: 'John' }, privilegedUser);
 
       const sql = conn.query.mock.calls[0][0] as string;
       expect(sql).toContain('LIKE');
@@ -204,9 +205,58 @@ describe('ExitInterviewService', () => {
       conn.query.mockRejectedValueOnce(new Error('DB error'));
 
       const service = await buildService(conn);
-      await expect(service.findAll({ page: 1, limit: 10 })).rejects.toThrow(
+      await expect(service.findAll({ page: 1, limit: 10 }, privilegedUser)).rejects.toThrow(
         InternalServerErrorException,
       );
+    });
+
+    it.each(['HR', 'HR Lead', 'Superadmin', 'Operation', 'Finance'])(
+      'does not scope a %s caller — no employee lookup, full visibility',
+      async (role) => {
+        const conn = makeConn();
+        q(conn, [[[{ total: 0 }]], [[]]]);
+
+        const service = await buildService(conn);
+        await service.findAll({ page: 1, limit: 10 }, { ...mockUser, role });
+
+        expect(conn.query).toHaveBeenCalledTimes(2);
+        const countCall = conn.query.mock.calls[0];
+        expect(countCall[0] as string).not.toContain('supervisor_id');
+      },
+    );
+
+    it.each(['Program', 'User'])(
+      'scopes a %s caller to their own exit plus their direct reports',
+      async (role) => {
+        const conn = makeConn();
+        q(conn, [
+          [[{ unique_id: 'me-uid', staff_id: 10 }]], // caller's own employee lookup
+          [[{ total: 0 }]],
+          [[]],
+        ]);
+
+        const service = await buildService(conn);
+        await service.findAll({ page: 1, limit: 10 }, { ...mockUser, role });
+
+        expect(conn.query.mock.calls[0][1]).toEqual([mockUser.email]);
+        const countCall = conn.query.mock.calls[1];
+        expect(countCall[0] as string).toContain('ei.supervisor_id');
+        expect(countCall[1]).toEqual([10, 'me-uid']);
+      },
+    );
+
+    it('returns an empty page for a non-privileged caller with no employee record', async () => {
+      const conn = makeConn();
+      q(conn, [[[]]]);
+
+      const service = await buildService(conn);
+      const result = await service.findAll({ page: 1, limit: 10 }, { ...mockUser, role: 'User' });
+
+      expect(result).toEqual({
+        data: [],
+        meta: { total: 0, page: 1, limit: 10, last_page: 0 },
+      });
+      expect(conn.query).toHaveBeenCalledTimes(1);
     });
   });
 

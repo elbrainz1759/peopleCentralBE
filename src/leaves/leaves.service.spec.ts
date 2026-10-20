@@ -597,6 +597,40 @@ beforeEach(() => {
       });
       expect(conn.query).toHaveBeenCalledTimes(1);
     });
+
+    it.each(['Operation', 'Finance'])(
+      'does not scope an %s caller either — full visibility',
+      async (role) => {
+        const conn = makeConn();
+        queueMocks(conn, [[[{ total: 0 }]], [[]]]);
+
+        const service = await buildService(conn);
+        await service.findAll({ page: 1, limit: 10 }, { ...mockUser, role });
+
+        expect(conn.query).toHaveBeenCalledTimes(2);
+        const countCall = conn.query.mock.calls[0];
+        expect(countCall[0] as string).not.toContain('scope_e');
+      },
+    );
+
+    it.each(['Program', 'User'])(
+      'scopes a %s caller to their own requests and their direct reports',
+      async (role) => {
+        const conn = makeConn();
+        queueMocks(conn, [
+          [[{ unique_id: 'me-uid', staff_id: 10 }]],
+          [[{ total: 0 }]],
+          [[]],
+        ]);
+
+        const service = await buildService(conn);
+        await service.findAll({ page: 1, limit: 10 }, { ...mockUser, role });
+
+        expect(conn.query.mock.calls[0][1]).toEqual([mockUser.email]);
+        const countCall = conn.query.mock.calls[1];
+        expect(countCall[0] as string).toContain('scope_e.supervisor');
+      },
+    );
   });
 
   // ── findOne ──────────────────────────────────────────────────────────────────

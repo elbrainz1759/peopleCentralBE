@@ -651,15 +651,20 @@ export class LeavesService {
         params.push(query.staffId);
       }
 
-      // Scope to what this caller may actually see. HR/HR Lead/Superadmin
-      // see every request company-wide — the final HR approval stage needs
-      // that. Everyone else (any role can end up supervising someone —
-      // supervisor-ness is a data relationship, not a role) only sees their
-      // own requests and their direct reports', matching the ownership
-      // check that already gates the approve/reject actions themselves.
-      const isPrivileged = ['HR', 'HR Lead', 'Superadmin'].includes(
-        user?.role ?? '',
-      );
+      // Scope to what this caller may actually see. HR/HR Lead/Operation/
+      // Finance/Superadmin see every request company-wide. Everyone else
+      // (Program, User, and any other role — any of them can end up
+      // supervising someone, since supervisor-ness is a data relationship,
+      // not a role) only sees their own requests and their direct reports',
+      // matching the ownership check that already gates the review/approve/
+      // reject actions themselves.
+      const isPrivileged = [
+        'HR',
+        'HR Lead',
+        'Superadmin',
+        'Operation',
+        'Finance',
+      ].includes(user?.role ?? '');
       if (!isPrivileged) {
         const [[me]] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT unique_id, staff_id FROM employee WHERE email = ?`,

@@ -90,7 +90,7 @@ export class ExitInterviewController {
     @Req() req: Request,
   ): Promise<PaginatedResult<ExitInterviewDetail>> {
     const user = req.user as RequestUser;
-    const result = await this.exitInterviewService.findAll(query);
+    const result = await this.exitInterviewService.findAll(query, user);
     return {
       ...result,
       data: result.data.map((r) => redact(r, user?.role)),

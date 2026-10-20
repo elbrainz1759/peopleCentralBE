@@ -557,6 +557,7 @@ export class ExitInterviewService {
   // ---------------------------------------------------------------------------
   async findAll(
     query: PaginationQueryDto,
+    user: RequestUser,
   ): Promise<PaginatedResult<ExitInterviewDetail>> {
     const conn = await this.pool.getConnection();
     try {
@@ -590,6 +591,31 @@ export class ExitInterviewService {
       if (query.countryId) {
         conditions.push('ei.country_id = ?');
         params.push(query.countryId);
+      }
+
+      // Scope to what this caller may actually see. Operations/Finance/
+      // HR/HR Lead/Superadmin see every exit company-wide — each owns a
+      // clearance stage that can land on any employee. Everyone else only
+      // sees their own exit request plus their direct reports' (supervisor
+      // is a data relationship, not a role — matches the same rule on
+      // GET /leaves).
+      const isPrivileged = [
+        'HR',
+        'HR Lead',
+        'Superadmin',
+        'Operation',
+        'Finance',
+      ].includes(user?.role ?? '');
+      if (!isPrivileged) {
+        const [[me]] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT unique_id, staff_id FROM employee WHERE email = ?`,
+          [user.email],
+        );
+        if (!me) {
+          return { data: [], meta: { total: 0, page, limit, last_page: 0 } };
+        }
+        conditions.push('(ei.staff_id = ? OR ei.supervisor_id = ?)');
+        params.push(me.staff_id, me.unique_id as string);
       }
 
       const whereClause =

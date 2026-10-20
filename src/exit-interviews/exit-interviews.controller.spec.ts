@@ -122,10 +122,10 @@ describe('ExitInterviewController', () => {
         mockReq(),
       );
 
-      expect(mockExitInterviewService.findAll).toHaveBeenCalledWith({
-        page: 1,
-        limit: 10,
-      });
+      expect(mockExitInterviewService.findAll).toHaveBeenCalledWith(
+        { page: 1, limit: 10 },
+        mockUser,
+      );
       expect(result).toEqual(basePaginated);
     });
   });
