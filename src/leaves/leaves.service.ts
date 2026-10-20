@@ -629,7 +629,10 @@ export class LeavesService {
   // ---------------------------------------------------------------------------
   // GET /leaves
   // ---------------------------------------------------------------------------
-  async findAll(query: PaginationQueryDto): Promise<PaginatedResult<Leave>> {
+  async findAll(
+    query: PaginationQueryDto,
+    user: RequestUser,
+  ): Promise<PaginatedResult<Leave>> {
     const conn = await this.pool.getConnection();
     try {
       const page = query.page ?? 1;
@@ -648,12 +651,39 @@ export class LeavesService {
         params.push(query.staffId);
       }
 
+      // Scope to what this caller may actually see. HR/HR Lead/Superadmin
+      // see every request company-wide — the final HR approval stage needs
+      // that. Everyone else (any role can end up supervising someone —
+      // supervisor-ness is a data relationship, not a role) only sees their
+      // own requests and their direct reports', matching the ownership
+      // check that already gates the approve/reject actions themselves.
+      const isPrivileged = ['HR', 'HR Lead', 'Superadmin'].includes(
+        user?.role ?? '',
+      );
+      if (!isPrivileged) {
+        const [[me]] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT unique_id, staff_id FROM employee WHERE email = ?`,
+          [user.email],
+        );
+        if (!me) {
+          return { data: [], meta: { total: 0, page, limit, last_page: 0 } };
+        }
+        conditions.push(
+          '(l.staff_id = ? OR scope_e.supervisor = ?)',
+        );
+        params.push(me.staff_id, me.unique_id as string);
+      }
+
+      const scopeJoin = isPrivileged
+        ? ''
+        : 'JOIN employee scope_e ON scope_e.staff_id = l.staff_id';
+
       const whereClause = conditions.length
         ? `WHERE ${conditions.join(' AND ')}`
         : '';
 
       const [[countRow]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT COUNT(*) AS total FROM leaves l ${whereClause}`,
+        `SELECT COUNT(*) AS total FROM leaves l ${scopeJoin} ${whereClause}`,
         params,
       );
       const total = countRow['total'] as number;
@@ -673,6 +703,7 @@ export class LeavesService {
          LEFT JOIN locations o    ON o.unique_id = e.location
          LEFT JOIN programs p     ON p.unique_id = e.program
          LEFT JOIN departments d  ON d.unique_id = e.department
+         ${scopeJoin}
          ${whereClause}
          ORDER BY l.created_at DESC
          LIMIT ? OFFSET ?`,
@@ -814,6 +845,7 @@ export class LeavesService {
   async review(
     id: number,
     reviewedBy: string,
+    callerRole: string,
     comments?: string,
   ): Promise<Leave> {
     const conn = await this.pool.getConnection();
@@ -830,6 +862,20 @@ export class LeavesService {
         throw new BadRequestException(
           `Only Pending leaves can be reviewed. Current status: ${leave.status}`,
         );
+      }
+
+      // Only the requester's own supervisor can review — HR/HR Lead/
+      // Superadmin can act on any supervisor's behalf.
+      if (!['HR', 'HR Lead', 'Superadmin'].includes(callerRole)) {
+        const { supervisorEmail } = await this.resolveEmailRecipients(
+          conn,
+          leave.staff_id,
+        );
+        if (!supervisorEmail || supervisorEmail !== reviewedBy) {
+          throw new ForbiddenException(
+            "Only this employee's supervisor can review their leave",
+          );
+        }
       }
 
       await conn.query(
@@ -884,7 +930,8 @@ export class LeavesService {
     } catch (err: unknown) {
       if (
         err instanceof NotFoundException ||
-        err instanceof BadRequestException
+        err instanceof BadRequestException ||
+        err instanceof ForbiddenException
       )
         throw err;
       throw new InternalServerErrorException(
@@ -896,12 +943,12 @@ export class LeavesService {
   }
 
   // ---------------------------------------------------------------------------
-  // PATCH /leaves/:id/approve  (Supervisor)
+  // PATCH /leaves/:id/approve  (HR final sign-off)
   // ---------------------------------------------------------------------------
   async approve(
     id: number,
     approvedBy: string,
-    callerRole: string,
+    _callerRole: string,
     comments?: string,
   ): Promise<Leave> {
     const conn = await this.pool.getConnection();
@@ -920,19 +967,9 @@ export class LeavesService {
         );
       }
 
-      // Only the requester's own supervisor can approve — HR/Superadmin can
-      // act on any supervisor's behalf.
-      if (!['HR', 'Superadmin'].includes(callerRole)) {
-        const { supervisorEmail } = await this.resolveEmailRecipients(
-          conn,
-          leave.staff_id,
-        );
-        if (!supervisorEmail || supervisorEmail !== approvedBy) {
-          throw new ForbiddenException(
-            "Only this employee's supervisor can approve their leave",
-          );
-        }
-      }
+      // No ownership check here — @Roles('HR','HR Lead','Superadmin') on the
+      // controller already restricts this to HR staff; final sign-off
+      // (and the balance deduction below) isn't the line manager's job.
 
       const [durationRows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ld.*, lt.name AS leave_type_name

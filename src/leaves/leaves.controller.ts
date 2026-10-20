@@ -64,8 +64,9 @@ export class LeavesController {
   // GET /leaves?page=1&limit=10&status=Pending&staffId=1
   // ---------------------------------------------------------------------------
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
-    return this.leavesService.findAll(query);
+  findAll(@Query() query: PaginationQueryDto, @Req() req: Request) {
+    const user = req.user as RequestUser;
+    return this.leavesService.findAll(query, user);
   }
 
   // ---------------------------------------------------------------------------
@@ -94,9 +95,12 @@ export class LeavesController {
   }
 
   // ---------------------------------------------------------------------------
-  // PATCH /leaves/:id/review  (HR)
+  // PATCH /leaves/:id/review  (Line Manager: Pending -> Reviewed / "Awaiting
+  // HR", per the UI's own "Line Manager Approves" workflow step). Ownership
+  // check lives in the service, same pattern as approve()/reject() — any
+  // role can be this employee's supervisor; HR/HR Lead/Superadmin can act
+  // on any supervisor's behalf.
   // ---------------------------------------------------------------------------
-  @Roles('HR', 'HR Lead', 'Superadmin')
   @Patch(':id/review')
   review(
     @Param('id', ParseIntPipe) id: number,
@@ -104,12 +108,16 @@ export class LeavesController {
     @Req() req: Request,
   ) {
     const user = req.user as RequestUser;
-    return this.leavesService.review(id, user.email, dto.comments);
+    return this.leavesService.review(id, user.email, user.role, dto.comments);
   }
 
   // ---------------------------------------------------------------------------
-  // PATCH /leaves/:id/approve  (Supervisor)
+  // PATCH /leaves/:id/approve  (HR final sign-off: Reviewed -> Approved,
+  // per the UI's "HR Finalises" workflow step — this is also where leave
+  // balance is actually deducted, so it's deliberately HR/HR Lead/Superadmin
+  // only, not an ownership check like the other two actions.)
   // ---------------------------------------------------------------------------
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Patch(':id/approve')
   approve(
     @Param('id', ParseIntPipe) id: number,

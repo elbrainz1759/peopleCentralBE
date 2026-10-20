@@ -60,6 +60,7 @@ const buildService = async (conn: ReturnType<typeof makeConn>) => {
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const mockUser: RequestUser = { email: 'staff@example.com', sub: 1, role: 'staff' };
+const privilegedUser: RequestUser = { ...mockUser, role: 'HR' };
 
 const baseLeave = {
   id: 1,
@@ -460,7 +461,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ page: 1, limit: 10 }, privilegedUser);
 
       expect(result.data).toHaveLength(1);
       expect(result.data[0].durations).toHaveLength(1);
@@ -482,7 +483,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ page: 1, limit: 10 }, privilegedUser);
 
       expect(result.data[0].handoverNotes![0].staff_email).toBe('colleague@mc.org');
       expect(result.data[1].handoverNotes![0].staff_email).toBe('other@mc.org');
@@ -498,7 +499,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ page: 1, limit: 10 }, privilegedUser);
 
       expect(result.data[0].handoverNotes).toEqual([]);
     });
@@ -511,7 +512,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.findAll({ page: 1, limit: 10 });
+      const result = await service.findAll({ page: 1, limit: 10 }, privilegedUser);
 
       expect(result.data).toHaveLength(0);
       expect(conn.query).toHaveBeenCalledTimes(2);
@@ -522,7 +523,7 @@ beforeEach(() => {
       queueMocks(conn, [[[{ total: 0 }]], [[]], [[]], [[]]]);
 
       const service = await buildService(conn);
-      await service.findAll({ page: 1, limit: 10, status: 'Approved' });
+      await service.findAll({ page: 1, limit: 10, status: 'Approved' }, privilegedUser);
 
       expect((conn.query.mock.calls[0][0] as string)).toContain('WHERE');
       expect(conn.query.mock.calls[0][1]).toContain('Approved');
@@ -533,7 +534,7 @@ beforeEach(() => {
       queueMocks(conn, [[[{ total: 0 }]], [[]], [[]], [[]]]);
 
       const service = await buildService(conn);
-      await service.findAll({ page: 1, limit: 10, staffId: "10" });
+      await service.findAll({ page: 1, limit: 10, staffId: "10" }, privilegedUser);
 
       expect(conn.query.mock.calls[0][1]).toContain("10");
     });
@@ -543,9 +544,58 @@ beforeEach(() => {
       conn.query.mockRejectedValueOnce(new Error('DB error'));
 
       const service = await buildService(conn);
-      await expect(service.findAll({ page: 1, limit: 10 })).rejects.toThrow(
+      await expect(service.findAll({ page: 1, limit: 10 }, privilegedUser)).rejects.toThrow(
         InternalServerErrorException,
       );
+    });
+
+    // ── visibility scoping ──────────────────────────────────────────────────
+
+    it('scopes a non-privileged caller to their own requests and their direct reports', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[{ unique_id: 'me-uid', staff_id: 10 }]], // caller's own employee lookup
+        [[{ total: 0 }]],
+        [[]],
+      ]);
+
+      const service = await buildService(conn);
+      await service.findAll({ page: 1, limit: 10 }, mockUser);
+
+      // First query is the caller's own employee lookup, by email.
+      expect(conn.query.mock.calls[0][1]).toEqual([mockUser.email]);
+
+      // Count query is scoped by staff_id (own) or supervisor (direct reports).
+      const countCall = conn.query.mock.calls[1];
+      expect(countCall[0] as string).toContain('scope_e.supervisor');
+      expect(countCall[1]).toEqual([10, 'me-uid']);
+    });
+
+    it('does not scope an HR/HR Lead/Superadmin caller — no employee lookup, full visibility', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [[[{ total: 0 }]], [[]]]);
+
+      const service = await buildService(conn);
+      await service.findAll({ page: 1, limit: 10 }, privilegedUser);
+
+      // No employee-lookup query — only count + page queries ran.
+      expect(conn.query).toHaveBeenCalledTimes(2);
+      const countCall = conn.query.mock.calls[0];
+      expect(countCall[0] as string).not.toContain('scope_e');
+    });
+
+    it('returns an empty page for a non-privileged caller with no employee record', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [[[]]]); // employee lookup finds nothing
+
+      const service = await buildService(conn);
+      const result = await service.findAll({ page: 1, limit: 10 }, mockUser);
+
+      expect(result).toEqual({
+        data: [],
+        meta: { total: 0, page: 1, limit: 10, last_page: 0 },
+      });
+      expect(conn.query).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -613,7 +663,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.review(1, 'hr@mc.org');
+      const result = await service.review(1, 'hr@mc.org', privilegedUser.role);
 
       expect(result.id).toBe(1);
       expect(mockMailService.sendCaseNotification).toHaveBeenCalledTimes(2);
@@ -628,7 +678,7 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[{ ...baseLeave, status: 'Approved' }]]);
 
       const service = await buildService(conn);
-      await expect(service.review(1, 'hr@mc.org')).rejects.toThrow(BadRequestException);
+      await expect(service.review(1, 'hr@mc.org', privilegedUser.role)).rejects.toThrow(BadRequestException);
     });
 
     it('throws NotFoundException when leave not found', async () => {
@@ -636,7 +686,42 @@ beforeEach(() => {
       conn.query.mockResolvedValueOnce([[]]);
 
       const service = await buildService(conn);
-      await expect(service.review(99, 'hr@mc.org')).rejects.toThrow(NotFoundException);
+      await expect(service.review(99, 'hr@mc.org', privilegedUser.role)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException when the caller is not HR/HR Lead/Superadmin or the assigned supervisor', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[baseLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'real-sup@mc.org' }]], // resolveEmailRecipients: staffRows
+        [[]], // resolveEmailRecipients: hrRows
+      ]);
+
+      const service = await buildService(conn);
+      await expect(
+        service.review(1, 'someone-else@mc.org', 'User'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("allows the employee's actual assigned supervisor to review", async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[baseLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]], // ownership check: staffRows
+        [[]],                                                                 // ownership check: hrRows
+        [{ affectedRows: 1 }],
+        [[baseLeave]],
+        [[baseDuration]],
+        [[baseHandoverNote]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]], // notification: staffRows
+        [[{ email: 'hr@mc.org' }]],                                          // notification: hrRows
+        [[{ full_name: 'John Doe' }]],
+      ]);
+
+      const service = await buildService(conn);
+      const result = await service.review(1, 'sup@mc.org', 'User');
+
+      expect(result.id).toBe(1);
     });
   });
 
@@ -819,26 +904,13 @@ beforeEach(() => {
       expect(conn.rollback).toHaveBeenCalled();
     });
 
-    it('throws ForbiddenException when the caller is not HR/Superadmin or the assigned supervisor', async () => {
+    it('does not check ownership — only @Roles(HR/HR Lead/Superadmin) on the controller gates this action', async () => {
+      // approve() is the HR final sign-off; the controller restricts it to
+      // HR/HR Lead/Superadmin before this method ever runs, so the service
+      // itself performs no ownership check (unlike review()/reject()).
       const conn = makeConn();
       queueMocks(conn, [
         [[reviewedLeave]],
-        [[{ staff_email: 'staff@mc.org', supervisor_email: 'real-sup@mc.org' }]],
-        [[]],
-      ]);
-
-      const service = await buildService(conn);
-      await expect(
-        service.approve(1, 'someone-else@mc.org', 'User'),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('allows the employee\'s actual assigned supervisor to approve', async () => {
-      const conn = makeConn();
-      queueMocks(conn, [
-        [[reviewedLeave]],
-        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]],
-        [[]],
         [[baseDuration]],
         [[{ country: 'Nigeria' }]],
         [[{ monthly_accrual_hours: null }]],
@@ -855,7 +927,7 @@ beforeEach(() => {
       ]);
 
       const service = await buildService(conn);
-      const result = await service.approve(1, 'sup@mc.org', 'User');
+      const result = await service.approve(1, 'hr@mc.org', 'HR');
 
       expect(result.id).toBe(1);
       expect(conn.commit).toHaveBeenCalled();

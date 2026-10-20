@@ -97,9 +97,9 @@ describe('LeavesController', () => {
     it('returns paginated result', async () => {
       mockLeavesService.findAll.mockResolvedValue(mockPaginated);
 
-      const result = await controller.findAll({ page: 1, limit: 10 });
+      const result = await controller.findAll({ page: 1, limit: 10 }, mockReq() as Request);
 
-      expect(mockLeavesService.findAll).toHaveBeenCalledWith({ page: 1, limit: 10 });
+      expect(mockLeavesService.findAll).toHaveBeenCalledWith({ page: 1, limit: 10 }, mockUser);
       expect(result).toEqual(mockPaginated);
     });
 
@@ -107,9 +107,9 @@ describe('LeavesController', () => {
       mockLeavesService.findAll.mockResolvedValue(mockPaginated);
       const query = { page: 1, limit: 10, status: 'Pending' as const, staffId: 10 };
 
-      await controller.findAll(query);
+      await controller.findAll(query, mockReq() as Request);
 
-      expect(mockLeavesService.findAll).toHaveBeenCalledWith(query);
+      expect(mockLeavesService.findAll).toHaveBeenCalledWith(query, mockUser);
     });
   });
 
@@ -168,7 +168,7 @@ describe('LeavesController', () => {
 
       const result = await controller.review(1, {}, mockReq() as Request);
 
-      expect(mockLeavesService.review).toHaveBeenCalledWith(1, mockUser.email, undefined);
+      expect(mockLeavesService.review).toHaveBeenCalledWith(1, mockUser.email, mockUser.role, undefined);
       expect(result).toEqual(reviewed);
     });
 
