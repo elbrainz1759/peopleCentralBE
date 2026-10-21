@@ -221,7 +221,10 @@ describe('ExitInterviewService', () => {
 
         expect(conn.query).toHaveBeenCalledTimes(2);
         const countCall = conn.query.mock.calls[0];
-        expect(countCall[0] as string).not.toContain('supervisor_id');
+        // The ownership-scoping WHERE clause, not just any mention of
+        // supervisor_id — DETAIL_JOINS itself legitimately joins on
+        // ei.supervisor_id (for the supervisor's name) regardless of role.
+        expect(countCall[0] as string).not.toContain('ei.staff_id = ?');
       },
     );
 
