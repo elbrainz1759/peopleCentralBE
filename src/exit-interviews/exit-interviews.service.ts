@@ -122,11 +122,13 @@ const DETAIL_SELECT = `
   d.name       AS department_name,
   l.name       AS location_name,
   c.name       AS country_name,
-  p.name       AS program_name
+  p.name       AS program_name,
+  CONCAT(sup.first_name, ' ', sup.last_name) AS supervisor_name
 `;
 
 const DETAIL_JOINS = `
   LEFT JOIN employee e    ON e.staff_id = ei.staff_id
+  LEFT JOIN employee sup  ON sup.unique_id = ei.supervisor_id
   LEFT JOIN departments d ON d.unique_id = ei.department_id
   LEFT JOIN locations l   ON l.unique_id = ei.location_id
   LEFT JOIN countries c   ON c.unique_id = ei.country_id
