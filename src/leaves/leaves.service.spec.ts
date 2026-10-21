@@ -631,6 +631,28 @@ beforeEach(() => {
         expect(countCall[0] as string).toContain('scope_e.supervisor');
       },
     );
+
+    it('scope=supervisor forces ownership scoping even for a privileged caller, and excludes their own requests', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[{ unique_id: 'me-uid', staff_id: 10 }]], // caller's own employee lookup
+        [[{ total: 0 }]],
+        [[]],
+      ]);
+
+      const service = await buildService(conn);
+      await service.findAll({ page: 1, limit: 10, scope: 'supervisor' }, privilegedUser);
+
+      // Still does the employee lookup — scope=supervisor overrides privilege.
+      expect(conn.query.mock.calls[0][1]).toEqual([privilegedUser.email]);
+
+      const countCall = conn.query.mock.calls[1];
+      expect(countCall[0] as string).toContain('scope_e.supervisor');
+      // Only the supervisor condition — no "l.staff_id = ?" own-record clause,
+      // since Pending Approvals is "am I the supervisor", not "is this mine".
+      expect(countCall[0] as string).not.toContain('l.staff_id = ?');
+      expect(countCall[1]).toEqual(['me-uid']);
+    });
   });
 
   // ── findOne ──────────────────────────────────────────────────────────────────

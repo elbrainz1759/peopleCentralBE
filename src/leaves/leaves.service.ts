@@ -658,13 +658,17 @@ export class LeavesService {
       // not a role) only sees their own requests and their direct reports',
       // matching the ownership check that already gates the review/approve/
       // reject actions themselves.
-      const isPrivileged = [
-        'HR',
-        'HR Lead',
-        'Superadmin',
-        'Operation',
-        'Finance',
-      ].includes(user?.role ?? '');
+      // scope=supervisor is the "Pending Approvals" queue — a strict "am I
+      // this employee's supervisor" question, ignored even for roles that
+      // would otherwise see every leave company-wide (HR querying their own
+      // direct reports' pending leaves isn't the same thing as HR's
+      // company-wide final-approval visibility).
+      const supervisorScopeOnly = query.scope === 'supervisor';
+      const isPrivileged =
+        !supervisorScopeOnly &&
+        ['HR', 'HR Lead', 'Superadmin', 'Operation', 'Finance'].includes(
+          user?.role ?? '',
+        );
       if (!isPrivileged) {
         const [[me]] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT unique_id, staff_id FROM employee WHERE email = ?`,
@@ -674,9 +678,15 @@ export class LeavesService {
           return { data: [], meta: { total: 0, page, limit, last_page: 0 } };
         }
         conditions.push(
-          '(l.staff_id = ? OR scope_e.supervisor = ?)',
+          supervisorScopeOnly
+            ? 'scope_e.supervisor = ?'
+            : '(l.staff_id = ? OR scope_e.supervisor = ?)',
         );
-        params.push(me.staff_id, me.unique_id as string);
+        if (supervisorScopeOnly) {
+          params.push(me.unique_id as string);
+        } else {
+          params.push(me.staff_id, me.unique_id as string);
+        }
       }
 
       const scopeJoin = isPrivileged
@@ -698,6 +708,7 @@ export class LeavesService {
            l.*,
            CONCAT(e.first_name, ' ', e.last_name)  AS employee_name,
            e.designation                            AS employee_designation,
+           e.supervisor                             AS supervisor_id,
            CONCAT(s.first_name, ' ', s.last_name)  AS supervisor_name,
            o.name                                   AS location_name,
            p.name                                   AS program_name,

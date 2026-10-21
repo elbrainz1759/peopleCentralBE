@@ -22,4 +22,12 @@ export class PaginationQueryDto {
   @Type(() => Number)
   @IsInt()
   staffId?: number;
+
+  // 'supervisor' forces ownership scoping (only the caller's own direct
+  // reports) even for roles that would otherwise see every leave company-
+  // wide — used by the dedicated "Pending Approvals" queue, which is a
+  // strict "am I this employee's supervisor" question regardless of role.
+  @IsOptional()
+  @IsString()
+  scope?: string;
 }
