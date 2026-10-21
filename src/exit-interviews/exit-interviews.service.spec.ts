@@ -261,6 +261,28 @@ describe('ExitInterviewService', () => {
       });
       expect(conn.query).toHaveBeenCalledTimes(1);
     });
+
+    it('scope=supervisor forces ownership scoping even for a privileged caller, and excludes their own exit', async () => {
+      const conn = makeConn();
+      q(conn, [
+        [[{ unique_id: 'me-uid', staff_id: 10 }]], // caller's own employee lookup
+        [[{ total: 0 }]],
+        [[]],
+      ]);
+
+      const service = await buildService(conn);
+      await service.findAll({ page: 1, limit: 10, scope: 'supervisor' }, privilegedUser);
+
+      // Still does the employee lookup — scope=supervisor overrides privilege.
+      expect(conn.query.mock.calls[0][1]).toEqual([privilegedUser.email]);
+
+      const countCall = conn.query.mock.calls[1];
+      expect(countCall[0] as string).toContain('ei.supervisor_id');
+      // Only the supervisor condition — no "ei.staff_id = ?" own-record
+      // clause, since Pending Exit Approvals is "am I the supervisor".
+      expect(countCall[0] as string).not.toContain('ei.staff_id = ?');
+      expect(countCall[1]).toEqual(['me-uid']);
+    });
   });
 
   // ── findOne ──────────────────────────────────────────────────────────────────

@@ -29,4 +29,12 @@ export class PaginationQueryDto {
   @IsOptional()
   @IsString()
   countryId?: string;
+
+  // 'supervisor' forces ownership scoping (only the caller's own direct
+  // reports) even for roles that would otherwise see every exit company-
+  // wide — used by the dedicated "Pending Exit Approvals" queue, which is a
+  // strict "am I this employee's supervisor" question regardless of role.
+  @IsOptional()
+  @IsString()
+  scope?: string;
 }

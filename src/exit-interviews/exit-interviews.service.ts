@@ -617,13 +617,12 @@ export class ExitInterviewService {
       // sees their own exit request plus their direct reports' (supervisor
       // is a data relationship, not a role — matches the same rule on
       // GET /leaves).
-      const isPrivileged = [
-        'HR',
-        'HR Lead',
-        'Superadmin',
-        'Operation',
-        'Finance',
-      ].includes(user?.role ?? '');
+      const supervisorScopeOnly = query.scope === 'supervisor';
+      const isPrivileged =
+        !supervisorScopeOnly &&
+        ['HR', 'HR Lead', 'Superadmin', 'Operation', 'Finance'].includes(
+          user?.role ?? '',
+        );
       if (!isPrivileged) {
         const [[me]] = await conn.query<mysql.RowDataPacket[]>(
           `SELECT unique_id, staff_id FROM employee WHERE email = ?`,
@@ -632,8 +631,16 @@ export class ExitInterviewService {
         if (!me) {
           return { data: [], meta: { total: 0, page, limit, last_page: 0 } };
         }
-        conditions.push('(ei.staff_id = ? OR ei.supervisor_id = ?)');
-        params.push(me.staff_id, me.unique_id as string);
+        conditions.push(
+          supervisorScopeOnly
+            ? 'ei.supervisor_id = ?'
+            : '(ei.staff_id = ? OR ei.supervisor_id = ?)',
+        );
+        if (supervisorScopeOnly) {
+          params.push(me.unique_id as string);
+        } else {
+          params.push(me.staff_id, me.unique_id as string);
+        }
       }
 
       const whereClause =
