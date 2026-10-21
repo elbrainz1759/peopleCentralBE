@@ -267,7 +267,7 @@ export class AuthService {
 
       // Generate Access Token
       const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, {
-        expiresIn: '15m',
+        expiresIn: '60m',
       });
       // Generate Refresh Token
       const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET!, {
@@ -345,10 +345,14 @@ export class AuthService {
     }
 
     if (!matchedSession) {
-      await this.pool.query('DELETE FROM user_sessions WHERE user_id = ?', [
-        payload.unique_id,
-      ]);
-      throw new UnauthorizedException('Refresh token reuse detected');
+      // No matching session for this token — either it's genuinely invalid,
+      // or (the common case) another tab/device already rotated it away a
+      // moment ago. Reject only this one request rather than revoking every
+      // other session for the user: nuking everything here is what turned a
+      // benign multi-tab race (or a single flaky /auth/refresh call) into a
+      // full logout, instead of the other tab's already-successful refresh
+      // just carrying the session forward.
+      throw new UnauthorizedException('Invalid refresh token');
     }
 
     // Re-fetch the current account from the DB rather than trusting the old
@@ -412,7 +416,7 @@ export class AuthService {
         unique_id: current.unique_id,
       },
       process.env.JWT_SECRET!,
-      { expiresIn: '15m' },
+      { expiresIn: '60m' },
     );
 
     return {
