@@ -315,7 +315,23 @@ export class ExitInterviewService {
     supervisorId: string,
     callerRole: string,
     actorEmail: string,
+    staffId: number,
   ): Promise<void> {
+    // No one clears or rejects their own exit interview at any stage,
+    // regardless of role — HR/HR Lead/Superadmin bypass the ownership check
+    // for every other department below, which would otherwise let someone
+    // holding one of those roles process their own exit end to end.
+    const [[staffRow]] = await conn.query<mysql.RowDataPacket[]>(
+      `SELECT email FROM employee WHERE staff_id = ?`,
+      [staffId],
+    );
+    const staffEmail = (staffRow?.email as string) ?? null;
+    if (staffEmail && staffEmail === actorEmail) {
+      throw new ForbiddenException(
+        'You cannot act on your own exit interview',
+      );
+    }
+
     if (department === 'Supervisor') {
       if (!['HR', 'HR Lead', 'Superadmin'].includes(callerRole)) {
         const supervisorEmail = await this.resolveEmployeeEmail(
@@ -858,6 +874,7 @@ export class ExitInterviewService {
         supervisorId,
         callerRole,
         clearedBy,
+        staffId,
       );
 
       // Rehire eligibility — captured by the supervisor at their clearance
@@ -1055,6 +1072,7 @@ export class ExitInterviewService {
         supervisorId,
         callerRole,
         rejectedBy,
+        staffId,
       );
 
       // Standalone note row — not tied to any checklist item.
@@ -1142,7 +1160,7 @@ export class ExitInterviewService {
     const conn = await this.pool.getConnection();
     try {
       const [[row]] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT stage, status FROM exit_interviews WHERE unique_id = ?`,
+        `SELECT stage, status, staff_id FROM exit_interviews WHERE unique_id = ?`,
         [id],
       );
       if (!row)
@@ -1157,6 +1175,20 @@ export class ExitInterviewService {
       const fromStage = row['stage'] as string;
       const fromStatus = row['status'] as string;
       const finalizedBy = user.email || 'System';
+
+      // Same self-action guard as assertCanActOnDepartment — HR Lead/
+      // Superadmin finalizing their own exit interview would otherwise
+      // close out their own clearance with no independent sign-off at all.
+      const [[staffRow]] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT email FROM employee WHERE staff_id = ?`,
+        [row['staff_id']],
+      );
+      const staffEmail = (staffRow?.email as string) ?? null;
+      if (staffEmail && staffEmail === finalizedBy) {
+        throw new ForbiddenException(
+          'You cannot finalize your own exit interview',
+        );
+      }
 
       await conn.execute(
         `UPDATE exit_interviews
@@ -1211,7 +1243,8 @@ export class ExitInterviewService {
 
       return detail;
     } catch (err) {
-      if (err instanceof NotFoundException) throw err;
+      if (err instanceof NotFoundException || err instanceof ForbiddenException)
+        throw err;
       throw new InternalServerErrorException(err);
     } finally {
       conn.release();

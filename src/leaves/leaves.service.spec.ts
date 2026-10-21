@@ -687,6 +687,8 @@ beforeEach(() => {
       const conn = makeConn();
       queueMocks(conn, [
         [[baseLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]], // self-check: staffRows
+        [[]], // self-check: hrRows
         [{ affectedRows: 1 }],
         [[baseLeave]],
         [[baseDuration]],
@@ -757,6 +759,20 @@ beforeEach(() => {
 
       expect(result.id).toBe(1);
     });
+
+    it('throws ForbiddenException when the requester tries to review their own leave, even as HR/HR Lead/Superadmin', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[baseLeave]],
+        [[{ staff_email: 'hr@mc.org', supervisor_email: 'sup@mc.org' }]], // self-check: staffRows
+        [[]], // self-check: hrRows
+      ]);
+
+      const service = await buildService(conn);
+      await expect(
+        service.review(1, 'hr@mc.org', privilegedUser.role),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   // ── approve ──────────────────────────────────────────────────────────────────
@@ -768,6 +784,8 @@ beforeEach(() => {
       const conn = makeConn();
       queueMocks(conn, [
         [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]], // self-check: staffRows
+        [[]], // self-check: hrRows
         [[baseDuration]],
         [[{ country: 'Nigeria' }]],                              // staffCountry (once, before type loop)
         [[{ monthly_accrual_hours: 13.33 }]],                     // isAccrual check — accrual type
@@ -808,6 +826,8 @@ beforeEach(() => {
       const conn = makeConn();
       queueMocks(conn, [
         [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]], // self-check: staffRows
+        [[]], // self-check: hrRows
         [multiDurations],
         [[{ country: 'Nigeria' }]],                               // staffCountry (once, before type loop)
         [[{ monthly_accrual_hours: 13.33 }]],                      // isAccrual check — lt-uid-001
@@ -848,6 +868,8 @@ beforeEach(() => {
       const conn = makeConn();
       queueMocks(conn, [
         [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]], // self-check: staffRows
+        [[]], // self-check: hrRows
         [[baseDuration]],
         [[{ country: 'Nigeria' }]],                              // staffCountry
         [[{ monthly_accrual_hours: null }]],                      // isAccrual check — non-accrual, no balance row required
@@ -892,6 +914,8 @@ beforeEach(() => {
       const conn = makeConn();
       queueMocks(conn, [
         [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]], // self-check: staffRows
+        [[]], // self-check: hrRows
         [[baseDuration]],
         [[{ country: 'Nigeria' }]],                          // staffCountry
         [[{ monthly_accrual_hours: 13.33 }]],                 // isAccrual check — accrual type
@@ -907,6 +931,8 @@ beforeEach(() => {
       const conn = makeConn();
       queueMocks(conn, [
         [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]], // self-check: staffRows
+        [[]], // self-check: hrRows
         [[baseDuration]],
         [[{ country: 'Nigeria' }]],                          // staffCountry
         [[{ monthly_accrual_hours: 13.33 }]],                 // isAccrual check — accrual type
@@ -928,7 +954,12 @@ beforeEach(() => {
 
     it('rolls back on unexpected db error', async () => {
       const conn = makeConn();
-      queueMocks(conn, [[[reviewedLeave]], [[baseDuration]]]);
+      queueMocks(conn, [
+        [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: null }]], // self-check: staffRows
+        [[]], // self-check: hrRows
+        [[baseDuration]],
+      ]);
       conn.query.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
@@ -938,13 +969,16 @@ beforeEach(() => {
       expect(conn.rollback).toHaveBeenCalled();
     });
 
-    it('does not check ownership — only @Roles(HR/HR Lead/Superadmin) on the controller gates this action', async () => {
+    it('does not require the approver to be the line manager — only @Roles(HR/HR Lead/Superadmin) and the self-approval guard apply', async () => {
       // approve() is the HR final sign-off; the controller restricts it to
       // HR/HR Lead/Superadmin before this method ever runs, so the service
-      // itself performs no ownership check (unlike review()/reject()).
+      // itself performs no line-manager ownership check (unlike review()/
+      // reject()) — only the narrower "not your own leave" self-check.
       const conn = makeConn();
       queueMocks(conn, [
         [[reviewedLeave]],
+        [[{ staff_email: 'staff@mc.org', supervisor_email: 'sup@mc.org' }]], // self-check: staffRows
+        [[]], // self-check: hrRows
         [[baseDuration]],
         [[{ country: 'Nigeria' }]],
         [[{ monthly_accrual_hours: null }]],
@@ -965,6 +999,20 @@ beforeEach(() => {
 
       expect(result.id).toBe(1);
       expect(conn.commit).toHaveBeenCalled();
+    });
+
+    it('throws ForbiddenException when the requester tries to give final approval to their own leave', async () => {
+      const conn = makeConn();
+      queueMocks(conn, [
+        [[reviewedLeave]],
+        [[{ staff_email: 'hr@mc.org', supervisor_email: null }]], // self-check: staffRows
+        [[]], // self-check: hrRows
+      ]);
+
+      const service = await buildService(conn);
+      await expect(service.approve(1, 'hr@mc.org', 'HR')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 

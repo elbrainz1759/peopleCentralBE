@@ -360,6 +360,7 @@ describe('ExitInterviewService', () => {
       const conn = makeConn();
       q(conn, [
         [[{ stage: department, status: 'Pending' }]], // existing check
+        [[]], // self-check: resolve staff email by staff_id — no staff_id here, no match
         // getClearanceStatus after commit:
         [[{ ...baseInterview, stage: department }]], // row
         [[]], // clearances
@@ -544,6 +545,7 @@ describe('ExitInterviewService', () => {
             },
           ],
         ],
+        [[{ email: 'staff@mc.org' }]], // self-check: staff email by staff_id
         [[{ email: 'real-sup@mc.org' }]], // resolveEmployeeEmail(supervisor_id)
       ]);
 
@@ -572,6 +574,7 @@ describe('ExitInterviewService', () => {
             },
           ],
         ],
+        [[{ email: 'staff@mc.org' }]], // self-check: staff email by staff_id
         [[{ email: 'sup@mc.org' }]], // resolveEmployeeEmail(supervisor_id)
         [[{ ...baseInterview, stage: 'Supervisor' }]], // getClearanceStatus row
         [[]], // getClearanceStatus clearances
@@ -737,7 +740,10 @@ describe('ExitInterviewService', () => {
 
     it('rolls back on unexpected db error', async () => {
       const conn = makeConn();
-      q(conn, [[[{ stage: 'HR', status: 'HR' }]]]);
+      q(conn, [
+        [[{ stage: 'HR', status: 'HR' }]],
+        [[]], // self-check: staff email by staff_id
+      ]);
       conn.execute.mockRejectedValueOnce(new Error('DB crash'));
 
       const service = await buildService(conn);
@@ -765,6 +771,7 @@ describe('ExitInterviewService', () => {
             },
           ],
         ], // existing check
+        [[{ email: 'staff@mc.org' }]], // self-check: staff email by staff_id
         // getClearanceStatus after commit:
         [[{ ...baseInterview, stage: department }]], // row
         [[]], // clearances
@@ -864,6 +871,7 @@ describe('ExitInterviewService', () => {
             },
           ],
         ],
+        [[{ email: 'staff@mc.org' }]], // self-check: staff email by staff_id
       ]);
       const service = await buildService(conn);
 
@@ -886,6 +894,7 @@ describe('ExitInterviewService', () => {
             },
           ],
         ],
+        [[{ email: 'staff@mc.org' }]], // self-check: staff email by staff_id
         [[{ email: 'real-sup@mc.org' }]], // resolveEmployeeEmail(supervisor_id)
       ]);
       const service = await buildService(conn);
@@ -924,7 +933,8 @@ describe('ExitInterviewService', () => {
     it('finalizes when stage is HR_Director and sets status to Approved', async () => {
       const conn = makeConn();
       q(conn, [
-        [[{ stage: 'HR_Director', status: 'HR_Director' }]], // SELECT stage check
+        [[{ stage: 'HR_Director', status: 'HR_Director', staff_id: 1001 }]], // SELECT stage check
+        [[{ email: 'staff@mc.org' }]], // self-check: staff email by staff_id
         [[baseDetail]], // findOne after update
       ]);
 
@@ -943,6 +953,19 @@ describe('ExitInterviewService', () => {
       );
       expect(auditCall).toBeDefined();
       expect(auditCall![1]).toContain('Approved'); // toStatus
+    });
+
+    it('throws ForbiddenException when the HR Lead tries to finalize their own exit interview', async () => {
+      const conn = makeConn();
+      q(conn, [
+        [[{ stage: 'HR_Director', status: 'HR_Director', staff_id: 1001 }]], // SELECT stage check
+        [[{ email: 'hr@mc.org' }]], // self-check: staff email by staff_id — matches mockUser
+      ]);
+
+      const service = await buildService(conn);
+      await expect(service.finalize('abc123', mockUser)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('throws InternalServerErrorException when stage is not HR_Director', async () => {

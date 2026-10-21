@@ -869,13 +869,23 @@ export class LeavesService {
         );
       }
 
+      const { staffEmail: requesterEmail, supervisorEmail } =
+        await this.resolveEmailRecipients(conn, leave.staff_id);
+
+      // No one reviews their own leave request, regardless of role — a
+      // privileged role (HR/HR Lead/Superadmin) being the requester doesn't
+      // make self-review legitimate, it just means the ownership check
+      // below would otherwise never catch it since that check is skipped
+      // entirely for those roles.
+      if (requesterEmail && requesterEmail === reviewedBy) {
+        throw new ForbiddenException(
+          'You cannot review your own leave request',
+        );
+      }
+
       // Only the requester's own supervisor can review — HR/HR Lead/
       // Superadmin can act on any supervisor's behalf.
       if (!['HR', 'HR Lead', 'Superadmin'].includes(callerRole)) {
-        const { supervisorEmail } = await this.resolveEmailRecipients(
-          conn,
-          leave.staff_id,
-        );
         if (!supervisorEmail || supervisorEmail !== reviewedBy) {
           throw new ForbiddenException(
             "Only this employee's supervisor can review their leave",
@@ -975,6 +985,18 @@ export class LeavesService {
       // No ownership check here — @Roles('HR','HR Lead','Superadmin') on the
       // controller already restricts this to HR staff; final sign-off
       // (and the balance deduction below) isn't the line manager's job.
+      // But that role gate alone lets an HR/HR Lead/Superadmin requester
+      // finalize their own leave with no independent sign-off at all, so
+      // self-approval still needs its own explicit check here.
+      const { staffEmail: requesterEmail } = await this.resolveEmailRecipients(
+        conn,
+        leave.staff_id,
+      );
+      if (requesterEmail && requesterEmail === approvedBy) {
+        throw new ForbiddenException(
+          'You cannot give final approval to your own leave request',
+        );
+      }
 
       const [durationRows] = await conn.query<mysql.RowDataPacket[]>(
         `SELECT ld.*, lt.name AS leave_type_name
