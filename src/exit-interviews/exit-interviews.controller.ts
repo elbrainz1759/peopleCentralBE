@@ -227,7 +227,10 @@ export class ExitInterviewController {
     return this.exitInterviewService.finalize(id, user);
   }
 
-  // PATCH /exit-interviews/:id
+  // PATCH /exit-interviews/:id  (HR record correction — reasonForLeaving,
+  // handoverNotes, etc. Never stage/status, which only the clear/reject/
+  // finalize endpoints may change.)
+  @Roles('HR', 'HR Lead', 'Superadmin')
   @Patch(':id')
   update(
     @Param('id') id: string,

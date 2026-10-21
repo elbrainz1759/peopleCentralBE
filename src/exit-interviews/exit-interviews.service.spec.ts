@@ -1069,7 +1069,7 @@ describe('ExitInterviewService', () => {
       const service = await buildService(conn);
       const result = await service.update(
         'abc123',
-        { stage: 'HR', status: 'In_Progress' },
+        { reasonForLeaving: 'Updated reason', handoverNotes: 'Updated notes' },
         mockUser,
       );
 
@@ -1079,13 +1079,33 @@ describe('ExitInterviewService', () => {
         (c[0] as string).includes('UPDATE exit_interviews SET'),
       );
       expect(updateCall).toBeDefined();
-      expect(updateCall![0]).toContain('stage = ?');
+      expect(updateCall![0]).toContain('reason_for_leaving = ?');
 
       const auditCall = conn.execute.mock.calls.find((c) =>
         (c[0] as string).includes('exit_interview_audit_log'),
       );
       expect(auditCall).toBeDefined();
-      expect(auditCall![1][8]).toContain('stage, status');
+      expect(auditCall![1][8]).toContain('reasonForLeaving, handoverNotes');
+    });
+
+    it('does not allow stage or status to be set via this endpoint', async () => {
+      // stage/status are owned entirely by the clear/reject/finalize
+      // endpoints — accepting them here would let any caller skip stages
+      // and clearance records entirely (found live in production data).
+      const conn = makeConn();
+      q(conn, [[[{ id: 1 }]], [[baseDetail]]]);
+
+      const service = await buildService(conn);
+      await service.update(
+        'abc123',
+        { stage: 'HR', status: 'Approved' } as any,
+        mockUser,
+      );
+
+      const updateCall = conn.execute.mock.calls.find((c) =>
+        (c[0] as string).includes('UPDATE exit_interviews SET'),
+      );
+      expect(updateCall).toBeUndefined();
     });
 
     it('returns existing record when dto is empty', async () => {
@@ -1108,7 +1128,7 @@ describe('ExitInterviewService', () => {
 
       const service = await buildService(conn);
       await expect(
-        service.update('bad', { stage: 'HR' }, mockUser),
+        service.update('bad', { reasonForLeaving: 'New reason' }, mockUser),
       ).rejects.toThrow(NotFoundException);
     });
   });

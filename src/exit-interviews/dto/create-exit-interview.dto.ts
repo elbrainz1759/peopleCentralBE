@@ -183,11 +183,10 @@ export class CreateExitInterviewDto {
   @IsIn(['Yes', 'No', 'Maybe', ''])
   wouldRecommend?: string;
 
-  @IsOptional()
-  @IsIn(['Employee', 'Supervisor', 'HR', 'Operations', 'Finance', ''])
-  stage?: string;
-
-  @IsOptional()
-  @IsIn(['Pending', 'Approved', 'Rejected', ''])
-  status?: string;
+  // stage/status are deliberately NOT fields here (or on the Update DTO it
+  // derives from): they're entirely owned by the clear/reject/finalize
+  // endpoints, which enforce ownership and record the clearance trail.
+  // Accepting them here let any caller of PATCH /exit-interviews/:id (no
+  // @Roles gate) set stage/status directly, skipping stages and clearance
+  // records entirely — found live in production data.
 }

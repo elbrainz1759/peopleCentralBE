@@ -1316,21 +1316,22 @@ export class ExitInterviewService {
         benefitHolidays: 'benefit_holidays',
         benefitEducation: 'benefit_education',
         wouldRecommend: 'would_recommend',
-        stage: 'stage',
-        status: 'status',
         programId: 'program_id',
         countryId: 'country_id',
         locationId: 'location_id',
       };
 
+      // Only fields explicitly present in columnMap are ever reachable here —
+      // no `?? f` fallback to the raw key name, which would otherwise let
+      // stage/status (or any other column whose name happens to match its
+      // DTO key) through even though they're deliberately excluded from the
+      // map above, bypassing the clear/reject/finalize endpoints entirely.
       const fields = (
         Object.keys(dto) as (keyof UpdateExitInterviewDto)[]
-      ).filter((f) => dto[f] !== undefined);
+      ).filter((f) => dto[f] !== undefined && columnMap[f] !== undefined);
       if (!fields.length) return this.findOne(id);
 
-      const setClauses = fields
-        .map((f) => `${columnMap[f] ?? f} = ?`)
-        .join(', ');
+      const setClauses = fields.map((f) => `${columnMap[f]} = ?`).join(', ');
       const values = fields.map((f) => dto[f]);
 
       await conn.execute(
